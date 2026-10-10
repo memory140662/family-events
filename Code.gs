@@ -107,19 +107,21 @@ function api(b) {
   const group = rows('groups').find(r => r.groupId === b.g);
   if (!group) throw Object.assign(new Error('這個群組還沒登記'), { code: 'unbound' }); // 前端依 code 顯示專用說明
   if (!b.userId) throw new Error('無法取得 LINE 身分，請從 LINE 裡打開');
-  const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
+  const now = Utilities.formatDate(new Date(), 'Asia/Taipei', "yyyy-MM-dd'T'HH:mm"), today = now.slice(0, 10);
   if (b.action === 'parse') return parseChain(b.text, today); // 只解析、不寫入，讓發起人先確認
   let created; // 新活動的 id，讓前端的卡片連結能直接開到這一場
   if (b.action !== 'load') created = locked(() => write(b));
   const families = rows('families').filter(r => r.groupId === b.g).map(r => r.name);
-  const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
+  const members = rows('members').filter(r => r.groupId === b.g), me = members.find(r => r.userId === b.userId);
   const events = rows('events').filter(r => r.groupId === b.g);
   return { groupName: group.name, families: families, family: me ? me.family : null, created: created,
-           events: summarize(events, rows('signups'), families, today, b.userId) };
+           unclaimed: families.filter(f => !members.some(r => r.family === f)), // 可刪的稱呼：沒有人選用
+           events: summarize(events, rows('signups'), families, now, b.userId) };
 }
 
 function write(b) {
   const now = new Date().toISOString();
+  const taipei = Utilities.formatDate(new Date(), 'Asia/Taipei', "yyyy-MM-dd'T'HH:mm"); // 鎖內才取時間，排隊等鎖時活動可能剛好結束
   if (b.action === 'join') {
     const name = String(b.family || '').trim().slice(0, 10);
     if (!name) throw new Error('請輸入稱呼');
@@ -138,6 +140,15 @@ function write(b) {
     updateWhere('families', r => r.groupId === b.g && r.name === me.family, { name: name });
     updateWhere('members', r => r.groupId === b.g && r.family === me.family, { family: name });
     updateWhere('signups', r => ids.includes(r.eventId) && r.family === me.family, { family: name });
+  } else if (b.action === 'drop') { // 刪打錯的稱呼：有人選用就不能刪（那人換稱呼時會自動消失）
+    const name = String(b.family || '');
+    const hit = rows('families').find(r => r.groupId === b.g && r.name === name);
+    if (!hit) throw new Error('找不到「' + name + '」');
+    if (rows('members').some(r => r.groupId === b.g && r.family === name)) throw new Error('「' + name + '」有人在用，不能刪除');
+    const open = rows('events').filter(r => r.groupId === b.g && !ended(r, taipei)).map(r => r.id); // 已結束的報名留作紀錄
+    const sh = table('signups');
+    rows('signups').filter(r => open.includes(r.eventId) && r.family === name).reverse().forEach(r => sh.deleteRow(r._row)); // 由下往上刪，列號才不會位移
+    table('families').deleteRow(hit._row);
   } else if (b.action === 'create') {
     const id = Utilities.getUuid().slice(0, 8);
     add('events', Object.assign(eventFields(b), { id: id, groupId: b.g, createdBy: b.userId, createdAt: now }));
@@ -153,13 +164,16 @@ function write(b) {
     const ev = rows('events').find(r => r.id === b.eventId && r.groupId === b.g);
     if (!ev) throw new Error('找不到這個活動');
     if (ev.createdBy !== b.userId) throw new Error('只有建立活動的人可以編輯');
-    if (b.date < Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd')) throw new Error('日期不能早於今天');
+    if (ended(ev, taipei)) throw new Error(ENDED);
+    if (b.date < taipei.slice(0, 10)) throw new Error('日期不能早於今天');
     upsert('events', ['id'], Object.assign(ev, eventFields(b)));
   } else if (b.action === 'signup') {
     const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
     const count = Number(b.count);
     if (!me) throw new Error('請先選擇您的稱呼');
-    if (!rows('events').some(r => r.id === b.eventId && r.groupId === b.g)) throw new Error('找不到這個活動');
+    const ev = rows('events').find(r => r.id === b.eventId && r.groupId === b.g);
+    if (!ev) throw new Error('找不到這個活動');
+    if (ended(ev, taipei)) throw new Error(ENDED);
     if (!(Number.isInteger(count) && count >= 0 && count <= 8)) throw new Error('人數不正確');
     upsert('signups', ['eventId', 'family'], { eventId: b.eventId, family: me.family, count: count, userId: b.userId, updatedAt: now });
   } else {
@@ -215,10 +229,17 @@ function parseChain(text, today) {
            place: place.slice(0, 50), entries: [...entries].map(([family, count]) => ({ family: family, count: count })) };
 }
 
-// 統計：只列今天以後的活動，依日期時間排序；count 0 代表「不去」，不算尚未回覆
-function summarize(events, signups, families, today, userId) {
+// 結束＝開始後 3 小時（晚到、現場臨時改人數還來得及）；沒填時間＝當天結束。now 為台灣時間 yyyy-MM-ddTHH:mm
+function ended(e, now) {
+  const end = e.time ? new Date(Date.parse(e.date + 'T' + e.time + 'Z') + 3 * 3600e3).toISOString().slice(0, 16) : e.date + 'T24:00';
+  return now >= end;
+}
+const ENDED = '這場聚會已經結束囉！下次再一起參加';
+
+// 統計：只列還沒結束的活動，依日期時間排序；count 0 代表「不去」，不算尚未回覆
+function summarize(events, signups, families, now, userId) {
   return events
-    .filter(e => e.date >= today)
+    .filter(e => !ended(e, now))
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
     .map(e => {
       const replies = signups.filter(s => s.eventId === e.id).map(s => ({ family: s.family, count: Number(s.count) }));

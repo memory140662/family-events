@@ -19,6 +19,7 @@
   .big { font-size: 28px; font-weight: bold; }
   .ok { color: #06a648; }
   .link { background: none; color: #333; text-decoration: underline; min-height: 52px; font-weight: bold; }
+  .link.minor { font-size: 16px; color: #666; font-weight: normal; }
   .mine { background: #e8f5e9; padding: 8px 12px; border-radius: 8px; }
   .wait { font-size: 24px; text-align: center; margin-top: 30vh; }
   label { display: block; font-weight: bold; }
@@ -153,8 +154,25 @@ function pickFamily() {
       <input id="fam" maxlength="10">
       <button class="primary wide" onclick="join(document.getElementById('fam').value)">新增</button>
     </div>
-    ${state.family ? `<button class="link" onclick="renameForm()">✏️ 修改稱呼</button>` : ''}`);
+    ${state.family ? `<button class="link" onclick="renameForm()">✏️ 修改稱呼</button>` : ''}
+    <button class="link minor" onclick="dropForm()">整理打錯的稱呼</button>`);
 }
+
+// 只列沒人選用的稱呼；確認時寫出會一起取消的報名（Gemini：次要連結、白話確認、空清單要能返回）
+function dropForm() {
+  const list = state.unclaimed;
+  show(list.length ? `<h1>整理打錯的稱呼</h1><p>點選要刪除的稱呼：</p>
+      <div class="grid">${list.map((f, i) => `<button onclick="drop(state.unclaimed[${i}])">${esc(f)}</button>`).join('')}</div>
+      <button class="wide" onclick="pickFamily()">返回</button>`
+    : `<p class="big">目前沒有打錯或閒置的稱呼喔！</p><button class="primary wide" onclick="pickFamily()">返回</button>`);
+}
+
+const drop = name => {
+  const lost = state.events.flatMap(ev => ev.replies.filter(r => r.family === name && r.count)
+    .map(r => `${fmtDate(ev.date)} ${ev.title} 的 ${r.count} 位`));
+  if (confirm(`確定刪除「${name}」？` + (lost.length ? `\n會一併取消「${name}」報名的：\n${lost.join('\n')}` : '')))
+    run(async () => { await call('drop', { family: name }); pickFamily(); });
+};
 
 const join = family => run(async () => { await call('join', { family }); home(); });
 
