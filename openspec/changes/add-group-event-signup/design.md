@@ -64,6 +64,9 @@ signups 以 (eventId, family) 為鍵 upsert；寫入時用 `LockService` 避免�
 - 規則（正規表示式，不用模型）：首個非空行為名稱並去掉「邀約」；第一個 `月/日` 為日期，年份取今天（含）之後最近的一次；第一個 `時:分` 為時間；`場所/地點：` 後的文字（若為空取下一行）為地點；`家庭 [*＊xX×] 數字` 行為接龍（人數 0–8，名稱 ≤10 字）。
 - 不讀群組聊天：避免推翻「Bot 不儲存聊天」承諾、避免無回饋或洗版兩難（三方討論結論）。
 
+### 11. 新活動卡片：發起人帳號代發 Flex，不用 Bot
+Messaging API 無法設定群組公告；Bot push 計額度（所有用戶共用）。故建立活動後以 `liff.sendMessages()` 發 Flex bubble（只用 URI action），發起人長按「設為公告」。卡片樣式由 Gemini 設計。
+
 ## Risks / Trade-offs
 
 - [Apps Script 對 POST 回 302，LINE 後台的 Verify 按鈕會失敗] → 事件仍會送達並執行；README 註明忽略 Verify 結果，以實際邀 Bot 入群測試。
