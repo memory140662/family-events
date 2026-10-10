@@ -36,11 +36,15 @@
   .ev-meta { font-size: 20px; color: #555; margin-bottom: 4px; }
   .ev-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
   .ev-foot .mine { margin: 0; }
+  .time-row { display: flex; gap: 8px; align-items: center; margin: 4px 0 16px; }
+  .time-row select { font: inherit; flex: 1; min-width: 0; min-height: 56px; padding: 0 8px; border: 2px solid #bbb; border-radius: 12px; background: #fff; color: #222; }
+  .time-row select:first-child { flex: 2; } /* 「下午 11 點 (23:00)」比較長 */
+  .time-row select:disabled { opacity: .45; }
   .card.ev.past { box-shadow: none; border: 1px solid #ddd; }
   .tag-end, .notice { background: #eee; color: #444; padding: 4px 12px; border-radius: 8px; font-weight: bold; }
   .ev-total { font-size: 20px; font-weight: bold; color: #087f3c; }
   /* iOS（LINE 內建瀏覽器）的日期／時間框有原生外觀與最小寬度，會撐破版面、文字置中 */
-  input[type=date], input[type=time] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; line-height: 52px; }
+  input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; line-height: 52px; }
   input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 </style>
 </head>
@@ -259,7 +263,7 @@ function createForm(i) {
     <div id="found"></div>`}
     <label for="t" style="margin-top:16px">活動名稱</label><input id="t" placeholder="例如：11月慶生餐會" maxlength="30" value="${val('title')}">
     <label for="d">日期</label><input id="d" type="date" min="${today}" value="${val('date')}">
-    <label for="h">時間</label><input id="h" type="time" value="${val('time')}">
+    <label for="h">時間</label>${timeInput(val('time'))}
     <label for="p">地點</label><input id="p" placeholder="例如：龍潭蔣府宴" maxlength="50" value="${val('place')}">
     <div id="list"></div>
     ${ev ? '' : `<p class="big">「${esc(state.family)}」參加人數？</p>
@@ -270,13 +274,29 @@ function createForm(i) {
     <button class="wide" onclick="${ev ? `detail(${i})` : 'home()'}">取消</button>`);
 }
 
+// 時間：時＋分兩個下拉，分只有 5 分一格（iPhone 的時間滾輪不吃 step）。接龍或舊資料的 11:32 會保留 32 分，不偷改（Gemini 版面）
+function timeInput(v) {
+  const pad = n => String(n).padStart(2, '0');
+  const [hh, mm] = v ? v.split(':') : ['', '00'];
+  const mins = [...Array(12)].map((_, i) => pad(i * 5));
+  if (!mins.includes(mm)) mins.push(mm), mins.sort();
+  const hour = h => (h < 12 ? `上午 ${h || 12}` : `下午 ${h === 12 ? 12 : h - 12}`) + ` 點 (${pad(h)}:00)`;
+  return `<div class="time-row">
+    <select id="h" aria-label="時" onchange="document.getElementById('m').disabled = !this.value">
+      <option value="">時間未定</option>${[...Array(24)].map((_, h) => `<option value="${pad(h)}"${pad(h) === hh ? ' selected' : ''}>${hour(h)}</option>`).join('')}
+    </select><b>：</b>
+    <select id="m" aria-label="分"${hh ? '' : ' disabled'}>${mins.map(m => `<option value="${m}"${m === mm ? ' selected' : ''}>${m} 分</option>`).join('')}</select>
+  </div>`;
+}
+
 // 貼上接龍 → 後端解析 → 帶入欄位並列出已接龍的稱呼；解析不到就留空讓人手填
 async function parseRelay() {
   const btn = document.getElementById('pb'), found = document.getElementById('found');
   btn.disabled = true; btn.textContent = '解析中…';
   try {
     const r = await post('parse', { text: document.getElementById('raw').value });
-    [['t', r.title], ['d', r.date], ['h', r.time], ['p', r.place]].forEach(([id, v]) => { if (v) document.getElementById(id).value = v; });
+    [['t', r.title], ['d', r.date], ['p', r.place]].forEach(([id, v]) => { if (v) document.getElementById(id).value = v; });
+    if (r.time) document.querySelector('.time-row').outerHTML = timeInput(r.time);
     entries = r.entries; // 接龍裡若有自己的稱呼，就成為預選的人數
     found.innerHTML = !r.date && !entries.length ? '<p class="warn">無法辨識接龍內容，請直接在下方手動填寫。</p>' : '';
     showEntries();
@@ -322,7 +342,7 @@ function eventFlex(d, id) {
 
 function formData() {
   const v = id => document.getElementById(id).value.trim();
-  const data = { title: v('t'), date: v('d'), time: v('h'), place: v('p') };
+  const data = { title: v('t'), date: v('d'), time: v('h') && v('h') + ':' + v('m'), place: v('p') };
   if (!data.title || !data.date) return alert('請填寫活動名稱與日期');
   return data;
 }
