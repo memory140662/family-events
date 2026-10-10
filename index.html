@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>家族活動報名</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font: 20px/1.5 system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 0; padding: 16px; background: #fff8f0; color: #222; }
+  h1 { font-size: 26px; margin: 0 0 16px; }
+  h2 { font-size: 24px; margin: 0 0 8px; }
+  .card { background: #fff; border-radius: 16px; padding: 16px; margin: 0 0 16px; box-shadow: 0 1px 4px #0002; }
+  button { font: inherit; min-height: 56px; border: 0; border-radius: 12px; padding: 0 16px; background: #e8e8e8; color: #222; }
+  .primary { background: #087f3c; color: #fff; font-weight: bold; }
+  .wide { display: block; width: 100%; margin-top: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .grid button { font-size: 26px; min-height: 72px; }
+  .muted { color: #333; font-size: 20px; }
+  .big { font-size: 28px; font-weight: bold; }
+  .ok { color: #06a648; }
+  .link { background: none; color: #333; text-decoration: underline; min-height: 52px; font-weight: bold; }
+  .mine { background: #e8f5e9; padding: 8px 12px; border-radius: 8px; }
+  .wait { font-size: 24px; text-align: center; margin-top: 30vh; }
+  label { display: block; font-weight: bold; }
+  .warn { color: #b45309; font-weight: bold; }
+  input, textarea { font: inherit; width: 100%; min-height: 56px; padding: 0 12px; margin: 4px 0 16px; border: 2px solid #bbb; border-radius: 12px; background: #fff; }
+  textarea { padding: 8px 12px; }
+</style>
+</head>
+<body>
+<div id="app">載入中…</div>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+const LIFF_ID = '2011955883-6uGgxKog';
+const API = 'https://script.google.com/macros/s/AKfycbw5df_Kxf2leySx2_MFJhA_-8-e7tYldqX5n9QMSVegw_1kqaEvkwOKMIUWT41xClJc/exec';
+
+const app = document.getElementById('app');
+const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const show = html => { app.innerHTML = html; scrollTo(0, 0); };
+let g, me, state, entries = [];
+
+main();
+
+async function main() {
+  try {
+    await liff.init({ liffId: LIFF_ID }); // init 之後網址上的 ?g= 才會還原
+    if (!liff.isLoggedIn()) return liff.login({ redirectUri: location.href });
+    g = new URLSearchParams(location.search).get('g');
+    me = await liff.getProfile();
+    await call('load');
+    home();
+  } catch (e) {
+    if (e.code === 'unbound') return show(`<h1>⚠️ 此群組尚未開通</h1>
+      <p>這個活動群組還沒連線到試算表喔！請有設定試算表的家人，在 LINE 群組傳送「<b>綁定</b>」即可啟用。</p>
+      <button class="primary wide" onclick="liff.closeWindow()">關閉視窗</button>
+      <button class="wide" onclick="location.reload()">已輸入綁定，重試</button>`);
+    show(`<p>發生錯誤：${esc(e.message)}</p><button class="primary wide" onclick="location.reload()">重新整理</button>`);
+  }
+}
+
+async function post(action, data = {}) {
+  const res = await (await fetch(API, { method: 'POST', body: JSON.stringify({ action, g, userId: me.userId, ...data }) })).json();
+  if (res.error) throw Object.assign(new Error(res.error), { code: res.code });
+  return res;
+}
+
+async function call(action, data = {}) {
+  show('<p class="wait">資料處理中，請稍候…</p>');
+  state = await post(action, data);
+}
+
+// 包一層：寫入失敗時顯示錯誤，並讓使用者回到首頁重試
+async function run(fn) {
+  try { await fn(); } catch (e) {
+    show(`<p>${esc(e.message)}</p><button class="primary wide" onclick="reload()">回首頁</button>`);
+  }
+}
+const reload = () => run(async () => { await call('load'); home(); });
+
+function home() {
+  if (!state.family) return pickFamily();
+  show(`<h1>${esc(state.groupName || '家族活動')}</h1>
+    ${state.events.length ? state.events.map(eventCard).join('') : '<p class="card">目前沒有活動</p>'}
+    <button class="primary wide" onclick="createForm()">＋ 新增活動</button>
+    <p class="muted">您是「${esc(state.family)}家」 <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
+}
+
+function eventCard(ev, i) {
+  const mine = ev.replies.find(r => r.family === state.family);
+  const replies = ev.replies.map(r => `${esc(r.family)} ${r.count || '不去'}`).join('、');
+  return `<div class="card">
+    <h2>${esc(ev.title)}</h2>
+    <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
+    ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
+    <p class="big">目前共 ${ev.total} 位</p>
+    ${replies ? `<div class="muted">${replies}</div>` : ''}
+    ${ev.pending.length ? `<div class="muted">尚未回覆：${ev.pending.map(esc).join('、')}</div>` : ''}
+    <p class="mine ${mine ? 'ok' : ''}"><b>您家：${mine ? (mine.count ? `已報名 ${mine.count} 位 ✅` : '不去') : '尚未回覆'}</b></p>
+    <button class="primary wide" onclick="pickCount(${i})">${mine ? '修改人數' : '我要報名'}</button>
+  </div>`;
+}
+
+function fmtDate(d) {
+  const t = new Date(d + 'T00:00');
+  return `${t.getMonth() + 1}/${t.getDate()}（${'日一二三四五六'[t.getDay()]}）`;
+}
+
+function pickFamily() {
+  show(`<h1>請問您是哪一家？</h1>
+    <div class="grid">${state.families.map((f, i) => `<button onclick="join(state.families[${i}])">${esc(f)}</button>`).join('')}</div>
+    <div class="card" style="margin-top:24px">
+      <label for="fam">清單裡沒有？新增我家</label>
+      <input id="fam" placeholder="例如：江" maxlength="10">
+      <button class="primary wide" onclick="join(document.getElementById('fam').value)">新增</button>
+    </div>`);
+}
+
+const join = family => run(async () => { await call('join', { family }); home(); });
+
+function pickCount(i) {
+  const ev = state.events[i];
+  const btns = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<button onclick="signup(${i}, ${n})">${n}</button>`).join('');
+  show(`<h1>${esc(ev.title)}</h1><p class="big">${esc(state.family)}家要去幾位？</p>
+    <div class="grid">${btns}</div>
+    <button class="wide" onclick="signup(${i}, 0)">本次不克參加</button>
+    <button class="wide" onclick="home()">返回</button>`);
+}
+
+const signup = (i, n) => run(async () => {
+  const { id, title } = state.events[i];
+  await call('signup', { eventId: id, count: n });
+  const total = state.events.find(e => e.id === id).total;
+  try { // 以使用者本人帳號在群組說一聲；不是從聊天室打開就略過，不影響報名
+    if (liff.isInClient() && liff.getContext().type !== 'none') {
+      await liff.sendMessages([{ type: 'text', text:
+        (n ? `${state.family}家報名「${title}」${n} 位 ✅` : `${state.family}家：「${title}」不克參加`) +
+        `\n目前共 ${total} 位\n👉 報名／看名單：https://liff.line.me/${LIFF_ID}?g=${g}` }]);
+    }
+  } catch (e) { console.warn('群組通知失敗', e); }
+  show(`<p class="big ok">✅ 已送出</p><p class="big">${esc(state.family)}家：${n ? `${n} 位` : '不去'}</p>
+    <p>「${esc(title)}」目前共 ${total} 位</p>
+    <button class="primary wide" onclick="home()">回活動列表</button>
+    <button class="wide" onclick="liff.closeWindow()">關閉</button>`);
+});
+
+function createForm() {
+  const today = new Date().toLocaleDateString('sv'); // yyyy-mm-dd
+  entries = [];
+  show(`<h1>新增活動</h1>
+    <label for="raw">從 LINE 接龍快速帶入（選填）</label>
+    <textarea id="raw" rows="3" placeholder="在此貼上 LINE 群組接龍文字..."></textarea>
+    <button type="button" id="pb" class="wide" onclick="parseRelay()">帶入接龍內容</button>
+    <div id="found"></div>
+    <label for="t" style="margin-top:16px">活動名稱</label><input id="t" placeholder="例如：11月慶生餐會" maxlength="30">
+    <label for="d">日期</label><input id="d" type="date" min="${today}">
+    <label for="h">時間</label><input id="h" type="time">
+    <label for="p">地點</label><input id="p" placeholder="例如：龍潭蔣府宴" maxlength="50">
+    <div id="list"></div>
+    <button class="primary wide" onclick="create()">建立活動</button>
+    <button class="wide" onclick="home()">取消</button>`);
+}
+
+// 貼上接龍 → 後端解析 → 帶入欄位並列出已接龍的家庭；解析不到就留空讓人手填
+async function parseRelay() {
+  const btn = document.getElementById('pb'), found = document.getElementById('found'), list = document.getElementById('list');
+  btn.disabled = true; btn.textContent = '解析中…';
+  try {
+    const r = await post('parse', { text: document.getElementById('raw').value });
+    [['t', r.title], ['d', r.date], ['h', r.time], ['p', r.place]].forEach(([id, v]) => { if (v) document.getElementById(id).value = v; });
+    entries = r.entries;
+    found.innerHTML = !r.date && !entries.length ? '<p class="warn">無法辨識接龍內容，請直接在下方手動填寫。</p>' : '';
+    const added = entries.filter(e => !state.families.includes(e.family)).map(e => esc(e.family));
+    list.innerHTML = entries.length ? `<p><b>已帶入名單（共 ${entries.reduce((n, e) => n + e.count, 0)} 人）：</b><br>
+      ${entries.map(e => `• ${esc(e.family)}：${e.count ? e.count + ' 人' : '不去'}`).join('　')}</p>
+      ${added.length ? `<p class="warn">⚠️ 將新增家庭：${added.join('、')}（請確認名稱是否正確）</p>` : ''}` : '';
+  } catch (e) {
+    found.innerHTML = '<p class="warn">解析失敗，請改用手動填寫。</p>';
+  }
+  btn.disabled = false; btn.textContent = '帶入接龍內容';
+}
+
+const create = () => {
+  const v = id => document.getElementById(id).value.trim();
+  const data = { title: v('t'), date: v('d'), time: v('h'), place: v('p'), entries };
+  if (!data.title || !data.date) return alert('請填寫活動名稱與日期');
+  run(async () => { await call('create', data); home(); });
+};
+</script>
+</body>
+</html>
