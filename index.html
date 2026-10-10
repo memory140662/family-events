@@ -108,14 +108,17 @@ function mineTag(ev) {
 // 詳細頁：操作放上面，長輩不用往下滑；名單放下面
 function detail(i) {
   const ev = state.events[i];
-  const mine = ev.replies.some(r => r.family === state.family);
+  const mine = ev.replies.find(r => r.family === state.family);
+  const pick = (n, label, cls = '') => `<button class="${cls} ${mine && mine.count === n ? 'primary' : ''}" onclick="signup(${i}, ${n})">${label}</button>`;
   const replies = ev.replies.map(r => `${esc(r.family)} ${r.count || '不去'}`).join('、');
   show(`<button class="link" onclick="home()">〈 回活動列表</button>
     <h1>${esc(ev.title)}</h1>
     <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
     ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
     ${mineTag(ev)}
-    <button class="primary wide" onclick="pickCount(${i})">${mine ? '修改人數' : '我要報名'}</button>
+    <p class="big">${esc(state.family)}家要去幾位？</p>
+    <div class="grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => pick(n, n)).join('')}</div>
+    ${pick(0, '本次不克參加', 'wide')}
     <div class="card" style="margin-top:16px">
       <p class="big">目前共 ${ev.total} 人參加</p>
       ${replies ? `<div>${replies}</div>` : '<div class="muted">還沒有人回覆</div>'}
@@ -139,15 +142,6 @@ function pickFamily() {
 }
 
 const join = family => run(async () => { await call('join', { family }); home(); });
-
-function pickCount(i) {
-  const ev = state.events[i];
-  const btns = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<button onclick="signup(${i}, ${n})">${n}</button>`).join('');
-  show(`<h1>${esc(ev.title)}</h1><p class="big">${esc(state.family)}家要去幾位？</p>
-    <div class="grid">${btns}</div>
-    <button class="wide" onclick="signup(${i}, 0)">本次不克參加</button>
-    <button class="wide" onclick="detail(${i})">返回</button>`);
-}
 
 const link = e => `https://liff.line.me/${LIFF_ID}?g=${g}` + (e ? `&e=${e}` : '');
 
