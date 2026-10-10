@@ -16,6 +16,7 @@ const fakeSheet = () => {
       getDisplayValues: () => data.map(r => r.map(x => x && x.disp ? x.disp : String(x))),
     }),
     getRange: row => ({ setNumberFormat() { return this; }, setValues: ([v]) => { data[row - 1] = v; } }),
+    deleteRow: row => data.splice(row - 1, 1),
   };
 };
 let uuid = 0;
@@ -112,6 +113,28 @@ ev = edit('u1', { time: '12:00' }).events.find(e => e.id === party);
 assert.deepEqual([ev.time, ev.total, ev.replies.length], ['12:00', 3, 3]);
 assert.equal(sheets.events.getDataRange().getValues().filter(r => r[0] === party)[0][6], 'u1', '編輯後建立者不變');
 
+// 稱呼打錯：新增了「汪」又換回原本的「江」→ 沒人用、也沒報名的「汪」自動消失，不會一直掛在「尚未回覆」
+call('u6', 'join', { family: '汪' });
+call('u6', 'join', { family: '江' });
+assert.ok(!call('u6', 'load').families.includes('汪'));
+// 但已經有報名的稱呼不能自動刪（報名會不見），留給管理者判斷
+call('u7', 'join', { family: '汪汪' });
+call('u7', 'signup', { eventId: party, count: 1 });
+call('u7', 'join', { family: '江' });
+assert.ok(call('u7', 'load').families.includes('汪汪'));
+
+// 修改稱呼：自己的稱呼改名，同稱呼的其他成員與報名都跟著改，總數不變
+call('u5', 'signup', { eventId: party, count: 2 });
+const total0 = call('u5', 'load').events.find(e => e.id === party).total;
+s = call('u5', 'rename', { family: '林家' });
+assert.equal(s.family, '林家');
+assert.ok(s.families.includes('林家') && !s.families.includes('林'));
+ev = s.events.find(e => e.id === party);
+assert.deepEqual([ev.replies.find(r => r.family === '林家').count, ev.total], [2, total0]);
+// 不能改成已經有的稱呼（同場兩邊都有報名時無法判斷要留哪筆）
+assert.match(call('u5', 'rename', { family: '江' }).error, /已經有了/);
+assert.ok(call('u99', 'rename', { family: 'X' }).error, '還沒選稱呼的人不能改');
+
 // 人數超出範圍、別的群組的活動、別的群組的連結都要擋下
 assert.ok(call('u1', 'signup', { eventId: party, count: 9 }).error);
 hook([{ type: 'join', source: inGroup('G2'), replyToken: 'r' }]);
@@ -147,5 +170,33 @@ ev = s.events.find(e => e.id === s.created); // 回傳新活動 id，卡片連�
 assert.equal(ev.title, '尾牙');
 assert.equal(ev.total, 3);
 assert.ok(s.families.includes('阿姨') && !s.families.includes('壞'), '人數不合理的行不匯入');
+
+// #新活動：群組裡用家人原本的接龍格式直接建立活動，Bot 回新活動卡片
+const lastMsg = () => JSON.parse(fetched.at(-1).opt.payload).messages[0];
+const eventsIn = g => sheets.events.getDataRange().getValues().filter(r => r[1] === g);
+say('#新活動\n12月慶生餐會邀約\n日時：\n12/12（六）11:30\n場所：龍潭-蔣府宴\n出席請接龍：\n花*1\n周*3+1', inGroup('G1', 'u3'));
+assert.equal(lastMsg().type, 'flex');
+assert.match(lastMsg().altText, /新活動：12月慶生餐會/);
+assert.match(JSON.stringify(lastMsg()), /新增稱呼：周/, '接龍裡沒見過的稱呼要讓大家看得到，打錯字才發現得了');
+assert.match(JSON.stringify(lastMsg()), /g=G1&e=/, '卡片按鈕直達這一場');
+ev = call('u3', 'load').events.find(e => e.title === '12月慶生餐會');
+assert.deepEqual([ev.date, ev.time, ev.place, ev.total, ev.canEdit], ['2026-12-12', '11:30', '龍潭-蔣府宴', 5, true], '發指令的人就是建立者，之後能用網頁編輯');
+// 同一則再貼一次：不重複建立，回原本那場
+const count = eventsIn('G1').length;
+say('#新活動\n12月慶生餐會邀約\n12/12 11:30\n花*1', inGroup('G1', 'u1'));
+assert.equal(eventsIn('G1').length, count);
+assert.match(lastMsg().altText, /已建立/);
+assert.match(JSON.stringify(lastMsg()), /花 1、周 4/, '重複時顯示這場實際的報名，不是這次貼的名單');
+// 只打指令、缺日期、拿不到身分：都不建立，並告訴對方怎麼做
+say('＃新活動', inGroup('G1', 'u1'));
+assert.match(lastReply(), /例如/);
+say('#新活動\n聚餐\n花*1', inGroup('G1', 'u1'));
+assert.match(lastReply(), /找不到活動日期/);
+say('#新活動\n春酒\n1/5', inGroup('G1'));
+assert.match(lastReply(), /無法辨識/);
+assert.equal(eventsIn('G1').length, count);
+// 還沒登記的群組也能直接用
+say('#新活動\n春酒\n1/5 18:00', inGroup('G7', 'u1'));
+assert.equal(call('u1', 'load', {}, 'G7').events[0].date, '2027-01-05');
 
 console.log('全部通過 ✅');

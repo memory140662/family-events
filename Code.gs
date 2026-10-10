@@ -20,7 +20,7 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ---- LINE Bot：被邀進群組就自動登記並回覆連結；群組只回應「#報名」，其他訊息一律忽略、不儲存 ----
+// ---- LINE Bot：被邀進群組就自動登記並回覆連結；群組只回應「#報名」「#新活動」，其他訊息一律忽略、不儲存 ----
 
 function onLineEvent(ev) {
   const src = ev.source || {};
@@ -31,12 +31,53 @@ function onLineEvent(ev) {
   }
   const g = src.groupId;
   // 加 # 前綴避免家人日常只打「報名」就誤觸；全形、半形、中間有空白都接受。舊群組若還沒登記，打這個也會補登記
-  if (!g || !(ev.type === 'join' || /^[#＃]\s*報名$/.test(text))) return;
+  const newEvent = text !== null && /^[#＃]\s*新活動/.test(text);
+  if (!g || !(ev.type === 'join' || /^[#＃]\s*報名$/.test(text) || newEvent)) return;
   if (!rows('groups').some(r => r.groupId === g)) add('groups', { groupId: g, name: groupName(g), joinedAt: new Date().toISOString() });
+  if (newEvent) return reply(ev.replyToken, chatEvent(g, src.userId, text.replace(/^[#＃]\s*新活動/, '')));
   reply(ev.replyToken, ev.type === 'join'
     ? '大家好！我是活動報名小幫手 🎉\n報名、看名單、新增活動都點這裡：\n' + link(g) + '\n\n💡 建議把這則訊息設為公告。忘記連結時，在群組輸入「#報名」即可。' +
       '\n📌 小幫手僅接收訊息以辨識關鍵字，絕不儲存任何聊天內容，請安心使用。'
     : '活動報名請點：\n' + link(g));
+}
+
+const CHAT_EXAMPLE = '#新活動\n11月慶生餐會\n日時：11/14（六）11:30\n場所：龍潭蔣府宴\n花*1\n江*3';
+
+// 「#新活動＋接龍內容」直接建立活動（明確指令才處理，不碰一般聊天）；回覆新活動卡片，有錯由建立者到網頁編輯
+function chatEvent(g, userId, body) {
+  if (!body.trim()) return '請在「#新活動」下面貼上活動內容，例如：\n' + CHAT_EXAMPLE;
+  if (!userId) return '無法辨識你的 LINE 身分，請改用報名網頁新增活動：\n' + link(g); // 沒有建立者就沒人能編輯
+  const p = parseChain(body, Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd'));
+  if (!p.title || !p.date) return '找不到活動' + (p.title ? '日期（例如 11/14）' : '名稱') + '，沒有建立。格式範例：\n' +
+    CHAT_EXAMPLE + '\n\n或點這裡用網頁新增：\n' + link(g);
+  return locked(() => { // 查重與建立在同一個鎖裡，同時貼兩次也只會建一場
+    const dup = rows('events').find(r => r.groupId === g && r.title === p.title && r.date === p.date);
+    if (dup) { // 重複貼同一則：不重複建，卡片顯示這場「實際」的報名，而不是這次貼的名單
+      const actual = rows('signups').filter(r => r.eventId === dup.id).map(r => ({ family: r.family, count: Number(r.count) }));
+      return eventCard(g, dup, actual, [], '📢 此活動已建立');
+    }
+    const known = rows('families').filter(r => r.groupId === g).map(r => r.name);
+    const added = p.entries.map(e => e.family).filter(f => !known.includes(f));
+    const id = write(Object.assign({ action: 'create', g: g, userId: userId }, p));
+    return eventCard(g, Object.assign({ id: id }, p), p.entries, added, '📢 新活動');
+  });
+}
+
+// 新活動卡片（與網頁發的同款，Gemini 設計）；Bot 用 reply 回，不計訊息額度
+function eventCard(g, e, entries, added, head) {
+  const total = entries.reduce((n, x) => n + x.count, 0);
+  const when = Number(e.date.slice(5, 7)) + '/' + Number(e.date.slice(8)) + '（' +
+    '日一二三四五六'[new Date(e.date + 'T00:00:00Z').getUTCDay()] + '）' + (e.time ? ' ' + e.time : '');
+  const text = (t, size, color, bold) => Object.assign({ type: 'text', text: t, size: size, color: color, wrap: true }, bold ? { weight: 'bold' } : {});
+  const lines = [text('📅 ' + when, 'lg', '#1e293b', true), text('📍 ' + (e.place || '地點待定'), 'md', '#475569'),
+    text('👥 ' + (entries.length ? '已報名：' + entries.map(x => x.family + ' ' + (x.count || '不去')).join('、') + '（共 ' + total + ' 位）' : '尚無人報名'), 'md', '#64748b')];
+  if (added.length) lines.push(text('⚠️ 新增稱呼：' + added.join('、'), 'md', '#b45309'));
+  return { type: 'flex', altText: head + '：' + e.title, contents: { type: 'bubble', size: 'mega',
+    header: { type: 'box', layout: 'vertical', paddingBottom: 'none', contents: [text(head, 'lg', '#087f3c', true)] },
+    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [text(e.title, 'xxl', '#111111', true), { type: 'separator' },
+      { type: 'box', layout: 'vertical', spacing: 'sm', contents: lines }] },
+    footer: { type: 'box', layout: 'vertical', contents: [{ type: 'button', style: 'primary', color: '#087f3c', height: 'md',
+      action: { type: 'uri', label: '我要報名', uri: link(g) + '&e=' + e.id } }] } } };
 }
 
 function link(g) { return 'https://liff.line.me/' + prop('LIFF_ID') + '?g=' + g; }
@@ -47,7 +88,14 @@ function lineApi(path, payload) {
   return UrlFetchApp.fetch('https://api.line.me/v2/bot/' + path, opt);
 }
 
-function reply(token, text) { lineApi('message/reply', { replyToken: token, messages: [{ type: 'text', text: text }] }); }
+function reply(token, msg) { lineApi('message/reply', { replyToken: token, messages: [typeof msg === 'string' ? { type: 'text', text: msg } : msg] }); }
+
+// 多人同時送出時排隊寫入，避免互相覆蓋
+function locked(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
 
 function groupName(g) {
   try { return JSON.parse(lineApi('group/' + g + '/summary').getContentText()).groupName || ''; } catch (e) { return ''; }
@@ -62,11 +110,7 @@ function api(b) {
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
   if (b.action === 'parse') return parseChain(b.text, today); // 只解析、不寫入，讓發起人先確認
   let created; // 新活動的 id，讓前端的卡片連結能直接開到這一場
-  if (b.action !== 'load') {
-    const lock = LockService.getScriptLock(); // 多人同時送出時排隊寫入，避免互相覆蓋
-    lock.waitLock(10000);
-    try { created = write(b); } finally { lock.releaseLock(); }
-  }
+  if (b.action !== 'load') created = locked(() => write(b));
   const families = rows('families').filter(r => r.groupId === b.g).map(r => r.name);
   const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
   const events = rows('events').filter(r => r.groupId === b.g);
@@ -78,9 +122,22 @@ function write(b) {
   const now = new Date().toISOString();
   if (b.action === 'join') {
     const name = String(b.family || '').trim().slice(0, 10);
-    if (!name) throw new Error('請輸入家庭名稱');
+    if (!name) throw new Error('請輸入稱呼');
+    const prev = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
     addFamily(b.g, name);
     upsert('members', ['groupId', 'userId'], { groupId: b.g, userId: b.userId, family: name });
+    if (prev && prev.family !== name) dropIfEmpty(b.g, prev.family); // 打錯後換回正確的稱呼，打錯的那個就自動消失
+  } else if (b.action === 'rename') { // 只能改自己的稱呼；不能改成已有的（合併時同場兩邊都有報名無法判斷）
+    const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
+    const name = String(b.family || '').trim().slice(0, 10);
+    if (!me) throw new Error('請先選擇您的稱呼');
+    if (!name) throw new Error('請輸入稱呼');
+    if (name === me.family) return;
+    if (rows('families').some(r => r.groupId === b.g && r.name === name)) throw new Error('「' + name + '」已經有了，請回上一頁直接選它');
+    const ids = rows('events').filter(r => r.groupId === b.g).map(r => r.id);
+    updateWhere('families', r => r.groupId === b.g && r.name === me.family, { name: name });
+    updateWhere('members', r => r.groupId === b.g && r.family === me.family, { family: name });
+    updateWhere('signups', r => ids.includes(r.eventId) && r.family === me.family, { family: name });
   } else if (b.action === 'create') {
     const id = Utilities.getUuid().slice(0, 8);
     add('events', Object.assign(eventFields(b), { id: id, groupId: b.g, createdBy: b.userId, createdAt: now }));
@@ -101,7 +158,7 @@ function write(b) {
   } else if (b.action === 'signup') {
     const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
     const count = Number(b.count);
-    if (!me) throw new Error('請先選擇您是哪一家');
+    if (!me) throw new Error('請先選擇您的稱呼');
     if (!rows('events').some(r => r.id === b.eventId && r.groupId === b.g)) throw new Error('找不到這個活動');
     if (!(Number.isInteger(count) && count >= 0 && count <= 8)) throw new Error('人數不正確');
     upsert('signups', ['eventId', 'family'], { eventId: b.eventId, family: me.family, count: count, userId: b.userId, updatedAt: now });
@@ -119,6 +176,15 @@ function eventFields(b) {
   if (!title || !real) throw new Error('請填寫活動名稱與正確的日期');
   if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('時間格式不正確');
   return { title: title, date: date, time: time, place: String(b.place || '').trim().slice(0, 50) };
+}
+
+// 沒有任何成員、也沒有任何報名的稱呼才移除；有報名的留給管理者到試算表判斷
+function dropIfEmpty(g, name) {
+  const ids = rows('events').filter(r => r.groupId === g).map(r => r.id);
+  if (rows('members').some(r => r.groupId === g && r.family === name)) return;
+  if (rows('signups').some(r => ids.includes(r.eventId) && r.family === name)) return;
+  const hit = rows('families').find(r => r.groupId === g && r.name === name);
+  if (hit) table('families').deleteRow(hit._row);
 }
 
 function addFamily(g, name) {
@@ -211,8 +277,13 @@ function add(name, obj) {
 
 function upsert(name, keys, obj) {
   const hit = rows(name).find(r => keys.every(k => r[k] === String(obj[k])));
-  if (!hit) return add(name, obj);
-  table(name).getRange(hit._row, 1, 1, TABLES[name].length).setNumberFormat('@').setValues([TABLES[name].map(h => String(obj[h] ?? ''))]);
+  hit ? put(name, hit._row, obj) : add(name, obj);
+}
+
+function updateWhere(name, match, patch) { rows(name).filter(match).forEach(r => put(name, r._row, Object.assign(r, patch))); }
+
+function put(name, row, obj) {
+  table(name).getRange(row, 1, 1, TABLES[name].length).setNumberFormat('@').setValues([TABLES[name].map(h => String(obj[h] ?? ''))]);
 }
 
 function prop(k) { return PropertiesService.getScriptProperties().getProperty(k); }
