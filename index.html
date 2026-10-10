@@ -126,17 +126,22 @@ function pickCount(i) {
     <button class="wide" onclick="home()">返回</button>`);
 }
 
+const link = () => `https://liff.line.me/${LIFF_ID}?g=${g}`;
+
+// 以使用者本人帳號在聊天室發訊息；不是從聊天室打開就略過，失敗也不影響主流程
+async function notify(messages) {
+  try {
+    if (liff.isInClient() && liff.getContext().type !== 'none') await liff.sendMessages(messages);
+  } catch (e) { console.warn('群組通知失敗', e); }
+}
+
 const signup = (i, n) => run(async () => {
   const { id, title } = state.events[i];
   await call('signup', { eventId: id, count: n });
   const total = state.events.find(e => e.id === id).total;
-  try { // 以使用者本人帳號在群組說一聲；不是從聊天室打開就略過，不影響報名
-    if (liff.isInClient() && liff.getContext().type !== 'none') {
-      await liff.sendMessages([{ type: 'text', text:
-        (n ? `${state.family}家報名「${title}」${n} 位 ✅` : `${state.family}家：「${title}」不克參加`) +
-        `\n目前共 ${total} 位\n👉 報名／看名單：https://liff.line.me/${LIFF_ID}?g=${g}` }]);
-    }
-  } catch (e) { console.warn('群組通知失敗', e); }
+  await notify([{ type: 'text', text:
+    (n ? `${state.family}家報名「${title}」${n} 位 ✅` : `${state.family}家：「${title}」不克參加`) +
+    `\n目前共 ${total} 位\n👉 報名／看名單：${link()}` }]);
   show(`<p class="big ok">✅ 已送出</p><p class="big">${esc(state.family)}家：${n ? `${n} 位` : '不去'}</p>
     <p>「${esc(title)}」目前共 ${total} 位</p>
     <button class="primary wide" onclick="home()">回活動列表</button>
@@ -179,11 +184,29 @@ async function parseRelay() {
   btn.disabled = false; btn.textContent = '帶入接龍內容';
 }
 
+// 新活動卡片（Gemini 設計）：發起人之後可長按「設為公告」
+function eventFlex(d) {
+  const total = d.entries.reduce((n, e) => n + e.count, 0);
+  const summary = d.entries.length
+    ? `已報名：${d.entries.map(e => `${e.family} ${e.count || '不去'}`).join('、')}（共 ${total} 位）` : '尚無人報名';
+  const text = (t, size, color, bold) => ({ type: 'text', text: t, size, color, wrap: true, ...(bold && { weight: 'bold' }) });
+  return { type: 'flex', altText: `📢 新活動：${d.title}`, contents: { type: 'bubble', size: 'mega',
+    header: { type: 'box', layout: 'vertical', paddingBottom: 'none', contents: [text('📢 新活動', 'lg', '#087f3c', true)] },
+    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [
+      text(d.title, 'xxl', '#111111', true), { type: 'separator' },
+      { type: 'box', layout: 'vertical', spacing: 'sm', contents: [
+        text(`📅 ${fmtDate(d.date)} ${d.time}`.trim(), 'lg', '#1e293b', true),
+        text(`📍 ${d.place || '地點待定'}`, 'md', '#475569'),
+        text(`👥 ${summary}`, 'md', '#64748b') ] } ] },
+    footer: { type: 'box', layout: 'vertical', contents: [{ type: 'button', style: 'primary', color: '#087f3c', height: 'md',
+      action: { type: 'uri', label: '我要報名', uri: link() } }] } } };
+}
+
 const create = () => {
   const v = id => document.getElementById(id).value.trim();
   const data = { title: v('t'), date: v('d'), time: v('h'), place: v('p'), entries };
   if (!data.title || !data.date) return alert('請填寫活動名稱與日期');
-  run(async () => { await call('create', data); home(); });
+  run(async () => { await call('create', data); await notify([eventFlex(data)]); home(); });
 };
 </script>
 </body>

@@ -135,6 +135,8 @@ assert.equal(call('u1', 'load').events.length, 2);
 const chain = '11月慶生餐會邀約\n日時：\n11/14（六）11:30\n場所：龍潭-蔣府宴\n出席請接龍：\n花*1\n江*3 \n';
 assert.deepEqual(call('u1', 'parse', { text: chain }), { title: '11月慶生餐會', date: '2026-11-14', time: '11:30',
   place: '龍潭-蔣府宴', entries: [{ family: '花', count: 1 }, { family: '江', count: 3 }] });
+// 家人會寫「3+1」（大人＋小孩），要加總，不能整行漏掉
+assert.deepEqual(call('u1', 'parse', { text: chain + '華*3+1\n' }).entries.at(-1), { family: '華', count: 4 });
 // 接龍沒寫年份：已過的月日要算明年，不然活動一建立就「過期」看不到
 assert.equal(call('u1', 'parse', { text: '春酒\n1/5 18:00\n林*2' }).date, '2027-01-05');
 // 不是接龍的文字：什麼都不帶入，也不寫入任何資料

@@ -155,8 +155,9 @@ function parseChain(text, today) {
   const place = pi < 0 ? '' : lines[pi].replace(/^(場所|地點|地址)\s*[:：]\s*/, '') || lines[pi + 1] || '';
   const entries = new Map(); // 同一家出現多次以最後一行為準
   lines.forEach(l => {
-    const m = l.match(/^(.{1,10}?)\s*[*＊xX×]\s*(\d+)$/);
-    if (m && Number(m[2]) <= 8) entries.set(m[1], Number(m[2]));
+    const m = l.match(/^(.{1,10}?)\s*[*＊xX×]\s*(\d+(?:\s*[+＋]\s*\d+)*)$/); // 「華*3+1」＝大人 3＋小孩 1
+    const n = m ? m[2].split(/[+＋]/).reduce((a, b) => a + Number(b), 0) : 0;
+    if (m && n <= 8) entries.set(m[1], n);
   });
   return { title: (lines[0] || '').replace(/邀約$/, '').slice(0, 30), date: date, time: hm ? pad(hm[1]) + ':' + hm[2] : '',
            place: place.slice(0, 50), entries: [...entries].map(([family, count]) => ({ family: family, count: count })) };
