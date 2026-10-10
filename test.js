@@ -53,19 +53,20 @@ hook([{ type: 'join', source: inGroup('G1'), replyToken: 'r' }]);
 assert.match(lastReply(), /liff\.line\.me\/L\?g=G1/);
 assert.equal(call('u1', 'load').groupName, '江家群組');
 
-// 舊版流程中加入、但沒打「綁定」的群組：打「報名」就補登記，不會卡住
-say('報名', inGroup('G0', 'u1'));
+// 舊版流程中加入、還沒登記的群組：打「#報名」就補登記，不會卡住
+say('#報名', inGroup('G0', 'u1'));
 assert.match(lastReply(), /g=G0/);
 assert.ok(!call('u1', 'load', {}, 'G0').error);
-say('報名', inGroup('G0', 'u1'));
-assert.equal(sheets.groups.getDataRange().getValues().filter(r => r[0] === 'G0').length, 1, '重複打「報名」不會重複登記');
+say('#報名', inGroup('G0', 'u1'));
+assert.equal(sheets.groups.getDataRange().getValues().filter(r => r[0] === 'G0').length, 1, '重複打「#報名」不會重複登記');
 
-// 一般聊天不回應（不洗版、不碰聊天內容），只有「報名」才回連結
+// 一般聊天不回應（不洗版、不碰聊天內容）；家人日常只打「報名」也不能觸發，要加 # 前綴
 const before = fetched.length;
-say('晚餐吃什麼', inGroup('G1', 'u1'));
+['晚餐吃什麼', '報名', '我要報名', '綁定', '#報名吧'].forEach(t => say(t, inGroup('G1', 'u1')));
 assert.equal(fetched.length, before);
-say(' 報名 ', inGroup('G1', 'u1'));
-assert.equal(fetched.length, before + 1);
+// 長輩用注音／手寫常打出全形「＃」或多一個空白，都要認得
+[' #報名 ', '＃報名', '# 報名'].forEach(t => say(t, inGroup('G1', 'u1')));
+assert.equal(fetched.length, before + 3);
 
 // 未選家庭不能報名；選過之後記住
 assert.equal(call('u1', 'load').family, null);

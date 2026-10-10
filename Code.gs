@@ -20,7 +20,7 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ---- LINE Bot：被邀進群組就自動登記並回覆連結；群組只回應「報名」，其他訊息一律忽略、不儲存 ----
+// ---- LINE Bot：被邀進群組就自動登記並回覆連結；群組只回應「#報名」，其他訊息一律忽略、不儲存 ----
 
 function onLineEvent(ev) {
   const src = ev.source || {};
@@ -30,11 +30,12 @@ function onLineEvent(ev) {
     return;
   }
   const g = src.groupId;
-  // 「綁定」：舊版流程的指令，舊群組可能還沒登記，照樣接受
-  if (!g || !(ev.type === 'join' || text === '報名' || text === '綁定')) return;
+  // 加 # 前綴避免家人日常只打「報名」就誤觸；全形、半形、中間有空白都接受。舊群組若還沒登記，打這個也會補登記
+  if (!g || !(ev.type === 'join' || /^[#＃]\s*報名$/.test(text))) return;
   if (!rows('groups').some(r => r.groupId === g)) add('groups', { groupId: g, name: groupName(g), joinedAt: new Date().toISOString() });
   reply(ev.replyToken, ev.type === 'join'
-    ? '大家好！我是活動報名小幫手 🎉\n報名、看名單、新增活動都點這裡：\n' + link(g) + '\n\n💡 建議把這則訊息設為公告。忘記連結時，在群組輸入「報名」即可。'
+    ? '大家好！我是活動報名小幫手 🎉\n報名、看名單、新增活動都點這裡：\n' + link(g) + '\n\n💡 建議把這則訊息設為公告。忘記連結時，在群組輸入「#報名」即可。' +
+      '\n📌 小幫手僅接收訊息以辨識關鍵字，絕不儲存任何聊天內容，請安心使用。'
     : '活動報名請點：\n' + link(g));
 }
 
