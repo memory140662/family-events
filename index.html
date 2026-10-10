@@ -25,6 +25,8 @@
   .warn { color: #b45309; font-weight: bold; }
   input, textarea { font: inherit; width: 100%; min-height: 56px; padding: 0 12px; margin: 4px 0 16px; border: 2px solid #bbb; border-radius: 12px; background: #fff; }
   textarea { padding: 8px 12px; }
+  /* 新增活動頁：選中「不克參加」改白底綠框，讓「建立活動」維持唯一實心綠，長輩不會混淆（Gemini） */
+  .btn-decline.primary { background: #fff; color: #087f3c; border: 3px solid #087f3c; }
   /* 活動列表卡片（Gemini 設計）：標題 → 時間 → 地點 → 共幾人／您的狀態 */
   .card.ev { padding: 12px 16px; margin-bottom: 12px; cursor: pointer; }
   .ev-head { display: flex; justify-content: space-between; align-items: baseline; }
@@ -207,23 +209,24 @@ function createForm(i) {
     <label for="h">時間</label><input id="h" type="time" value="${val('time')}">
     <label for="p">地點</label><input id="p" placeholder="例如：龍潭蔣府宴" maxlength="50" value="${val('place')}">
     <div id="list"></div>
+    ${ev ? '' : `<p class="big">「${esc(state.family)}」參加人數？</p>
+    <div id="mine"><div class="grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `<button data-n="${n}" onclick="pickMine(${n})">${n}</button>`).join('')}</div>
+    <button class="wide btn-decline" data-n="0" onclick="pickMine(0)">本次不克參加</button></div>
+    <hr style="margin:24px 0;border:none;border-top:2px dashed #ccc">`}
     <button class="primary wide" onclick="${ev ? `save(${i})` : 'create()'}">${ev ? '儲存修改' : '建立活動'}</button>
     <button class="wide" onclick="${ev ? `detail(${i})` : 'home()'}">取消</button>`);
 }
 
 // 貼上接龍 → 後端解析 → 帶入欄位並列出已接龍的稱呼；解析不到就留空讓人手填
 async function parseRelay() {
-  const btn = document.getElementById('pb'), found = document.getElementById('found'), list = document.getElementById('list');
+  const btn = document.getElementById('pb'), found = document.getElementById('found');
   btn.disabled = true; btn.textContent = '解析中…';
   try {
     const r = await post('parse', { text: document.getElementById('raw').value });
     [['t', r.title], ['d', r.date], ['h', r.time], ['p', r.place]].forEach(([id, v]) => { if (v) document.getElementById(id).value = v; });
-    entries = r.entries;
+    entries = r.entries; // 接龍裡若有自己的稱呼，就成為預選的人數
     found.innerHTML = !r.date && !entries.length ? '<p class="warn">無法辨識接龍內容，請直接在下方手動填寫。</p>' : '';
-    const added = entries.filter(e => !state.families.includes(e.family)).map(e => esc(e.family));
-    list.innerHTML = entries.length ? `<p><b>已帶入名單（共 ${entries.reduce((n, e) => n + e.count, 0)} 人）：</b><br>
-      ${entries.map(e => `• ${esc(e.family)}：${e.count ? e.count + ' 人' : '不去'}`).join('　')}</p>
-      ${added.length ? `<p class="warn">⚠️ 將新增稱呼：${added.join('、')}（請確認名稱是否正確）</p>` : ''}` : '';
+    showEntries();
   } catch (e) {
     found.innerHTML = '<p class="warn">解析失敗，請改用手動填寫。</p>';
   }
@@ -269,6 +272,21 @@ function formData() {
   const data = { title: v('t'), date: v('d'), time: v('h'), place: v('p') };
   if (!data.title || !data.date) return alert('請填寫活動名稱與日期');
   return data;
+}
+
+// 建立人自己的人數（Gemini：A 案）：寫進 entries，新活動卡上就含他的報名，群組只多一張卡；手動點選蓋過接龍
+function pickMine(n) {
+  entries = entries.filter(e => e.family !== state.family).concat([{ family: state.family, count: n }]);
+  showEntries();
+}
+
+function showEntries() {
+  const mine = entries.find(e => e.family === state.family);
+  document.querySelectorAll('#mine button').forEach(b => b.classList.toggle('primary', !!mine && Number(b.dataset.n) === mine.count));
+  const added = entries.filter(e => !state.families.includes(e.family)).map(e => esc(e.family));
+  document.getElementById('list').innerHTML = entries.length ? `<p><b>已帶入名單（共 ${entries.reduce((n, e) => n + e.count, 0)} 人）：</b><br>
+    ${entries.map(e => `• ${esc(e.family)}：${e.count ? e.count + ' 人' : '不去'}`).join('　')}</p>
+    ${added.length ? `<p class="warn">⚠️ 將新增稱呼：${added.join('、')}（請確認名稱是否正確）</p>` : ''}` : '';
 }
 
 const create = () => {
