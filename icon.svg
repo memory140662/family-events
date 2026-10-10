@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640">
+  <!-- 背景：暖米色底（LINE 圓形裁切時呈現溫潤親切感） -->
+  <rect width="640" height="640" fill="#fff8f0"/>
+
+  <!-- 日曆底板與柔和陰影（限制於直徑 480 圓形安全區內） -->
+  <rect x="150" y="135" width="340" height="360" rx="40" fill="#ebdcd0"/>
+  <rect x="150" y="125" width="340" height="360" rx="40" fill="#ffffff" stroke="#e2d4c0" stroke-width="4"/>
+
+  <!-- 日曆頂部色塊（主綠 #087f3c，活動日曆象徵） -->
+  <path d="M 150 165 A 40 40 0 0 1 190 125 H 450 A 40 40 0 0 1 490 165 V 220 H 150 Z" fill="#087f3c"/>
+
+  <!-- 日曆掛環（暖陽橘 #f59e0b） -->
+  <rect x="220" y="104" width="26" height="48" rx="13" fill="#f59e0b"/>
+  <rect x="394" y="104" width="26" height="48" rx="13" fill="#f59e0b"/>
+
+  <!-- 家族相聚剪影：老中青三代相聚（左中右），以暖陽橘 #f59e0b 呈現親情溫度 -->
+  <!-- 左側家人 -->
+  <circle cx="262" cy="280" r="20" fill="#f59e0b"/>
+  <path d="M 236 348 C 236 316, 288 316, 288 348 Z" fill="#f59e0b"/>
+
+  <!-- 右側家人 -->
+  <circle cx="378" cy="280" r="20" fill="#f59e0b"/>
+  <path d="M 352 348 C 352 316, 404 316, 404 348 Z" fill="#f59e0b"/>
+
+  <!-- 中央長輩（居中主位） -->
+  <circle cx="320" cy="264" r="25" fill="#f59e0b"/>
+  <path d="M 288 340 C 288 300, 352 300, 352 340 Z" fill="#f59e0b"/>
+
+  <!-- 報名打勾：主綠 #087f3c 大筆畫打勾，高對比、40px 極速辨識「已報名」 -->
+  <path d="M 270 415 L 308 453 L 380 375" fill="none" stroke="#087f3c" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
