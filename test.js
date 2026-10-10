@@ -235,7 +235,7 @@ assert.equal(welcome.length, 3);
 assert.match(welcome[0], /g=G8[\s\S]*privacy\.html/);
 say(welcome[2], inGroup('G8', 'u1'));
 assert.equal(lastMsg().type, 'flex', '複製範例直接送出就建立活動');
-assert.equal(call('u1', 'load', {}, 'G8').events[0].title, '11月慶生餐會');
+assert.equal(call('u1', 'load', {}, 'G8').events[0].title, welcome[2].split('\n')[1], '活動名稱就是範例第一行（改範例不用改測試）');
 
 // 效能：每張分頁一次請求只讀一次
 reads = 0; call('u1', 'load');

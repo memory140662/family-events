@@ -45,7 +45,7 @@ function onLineEvent(ev) {
 }
 
 const PRIVACY = 'https://memory140662.github.io/family-events/privacy.html';
-const CHAT_EXAMPLE = '#新活動\n11月慶生餐會\n日時：11/14（六）11:30\n場所：龍潭蔣府宴\n花*1\n江*3';
+const CHAT_EXAMPLE = '#新活動\n生餐會\n日時：01/01 11:30\n場所：家中\n小明*1\n小花*3';
 
 // 「#新活動＋接龍內容」直接建立活動（明確指令才處理，不碰一般聊天）；回覆新活動卡片，有錯由建立者到網頁編輯
 function chatEvent(g, userId, body) {
