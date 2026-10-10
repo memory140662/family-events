@@ -6,6 +6,7 @@ LINE 群組用的活動報名小幫手：Bot 認群組、LIFF 小網頁報名與
 | 檔案 | 用途 | 放哪裡 |
 |---|---|---|
 | `index.html` | 報名網頁（LIFF） | GitHub Pages |
+| `privacy.html` | 隱私權政策（填進 LINE 後台） | GitHub Pages |
 | `Code.gs` | Bot webhook＋資料 API | Google 試算表的 Apps Script |
 | `test.js` | 後端規則測試：`node test.js` | 本機 |
 
@@ -33,6 +34,8 @@ LINE 群組用的活動報名小幫手：Bot 認群組、LIFF 小網頁報名與
    - Bot link feature（或 Add friend option）：有的話選 Off，沒有就略過
 3. 記下 **LIFF ID**（像 `2001234567-AbCdEfGh`）。
 4. LINE Login channel 右上角狀態從 Developing 改成 **Published**，否則只有你自己能用。
+5. 兩個 channel（LINE Login、Messaging API）的 Basic settings → **Privacy policy URL** 都填 GitHub Pages 網址加上 `privacy.html`，例如 `https://<帳號>.github.io/family-events/privacy.html`。
+   隱私權政策寫的聯絡方式是「私訊官方帳號」，所以要到 LINE Official Account Manager → 回應設定 → 開啟**聊天**（Webhook 保持開啟），並定期查看私訊。
 
 ### 4. Google 試算表＋Apps Script
 1. 建立一個新的 Google 試算表 → 擴充功能 → Apps Script。
