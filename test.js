@@ -19,12 +19,12 @@ const fakeSheet = () => {
     deleteRow: row => data.splice(row - 1, 1),
   };
 };
-let uuid = 0;
+let uuid = 0, clock = '2026-11-01T12:00';
 const ctx = {
   SpreadsheetApp: { getActive: () => ({ getSheetByName: n => sheets[n], insertSheet: n => (sheets[n] = fakeSheet()) }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ HOOK_KEY: 'k', LIFF_ID: 'L', CHANNEL_TOKEN: 't' })[k] }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-  Utilities: { formatDate: () => '2026-11-01', getUuid: () => 'ev' + ++uuid + '-xxxxxxx' }, // 「今天」固定為 2026-11-01
+  Utilities: { formatDate: (d, tz, f) => f.includes('HH') ? clock : clock.slice(0, 10), getUuid: () => 'ev' + ++uuid + '-xxxxxxx' }, // 「今天」固定為 2026-11-01
   UrlFetchApp: { fetch: (url, opt) => { fetched.push({ url, opt }); return { getContentText: () => '{"groupName":"江家群組"}' }; } },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ s, setMimeType() { return this; } }) },
 };
@@ -198,5 +198,33 @@ assert.equal(eventsIn('G1').length, count);
 // 還沒登記的群組也能直接用
 say('#新活動\n春酒\n1/5 18:00', inGroup('G7', 'u1'));
 assert.equal(call('u1', 'load', {}, 'G7').events[0].date, '2027-01-05');
+
+// 活動結束（開始後 3 小時；沒填時間＝當天結束）就從列表消失，也不能再報名或編輯——長輩不會對著已結束的聚會改人數
+const listed = (u, title) => call(u, 'load').events.some(e => e.title === title);
+clock = '2026-11-14T14:59'; // 慶生餐會 12:00 開始，晚到的還能改人數
+assert.ok(listed('u1', '11月慶生餐會'));
+assert.ok(!call('u3', 'signup', { eventId: party, count: 2 }).error);
+clock = '2026-11-14T15:00';
+assert.ok(!listed('u1', '11月慶生餐會'));
+assert.match(call('u3', 'signup', { eventId: party, count: 1 }).error, /結束/);
+assert.match(edit('u1', { date: '2026-11-14', time: '12:00' }).error, /結束/, '結束後不能改（列表已看不到，只擋直接呼叫 API）');
+clock = '2026-12-20T23:59'; // 尾牙沒填時間
+assert.ok(listed('u3', '尾牙'));
+clock = '2026-12-21T00:00';
+assert.ok(!listed('u3', '尾牙'));
+
+// 刪除打錯的稱呼：只能刪沒人選用的；未結束活動的報名一起取消，已結束的留作紀錄
+clock = '2026-12-21T09:00'; // 尾牙（12/20，阿姨 2 位）已結束
+const winter = call('u1', 'create', { title: '冬至', date: '2026-12-22', entries: [{ family: '阿姨', count: 2 }, { family: '花', count: 1 }] }).created;
+const newYear = call('u1', 'create', { title: '元旦', date: '2027-01-01', entries: [{ family: '阿姨', count: 1 }] }).created;
+s = call('u1', 'load');
+assert.ok(s.unclaimed.includes('阿姨') && !s.unclaimed.includes('江'));
+assert.match(call('u1', 'drop', { family: '江' }).error, /有人在用/, '有人選用的不能刪，否則那人會變成沒有稱呼');
+assert.ok(call('u1', 'drop', { family: '不存在' }).error);
+s = call('u1', 'drop', { family: '阿姨' });
+assert.ok(!s.families.includes('阿姨'));
+assert.deepEqual(s.events.find(e => e.id === winter).replies, [{ family: '花', count: 1 }], '刪掉的稱呼不再計入人數');
+assert.deepEqual(s.events.find(e => e.id === newYear).replies, [], '多筆報名都要刪到，不能刪錯列');
+assert.ok(sheets.signups.getDataRange().getValues().some(r => r[1] === '阿姨'), '已結束活動的報名保留');
 
 console.log('全部通過 ✅');
