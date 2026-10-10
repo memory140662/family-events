@@ -37,7 +37,7 @@ const API = 'https://script.google.com/macros/s/AKfycbw5df_Kxf2leySx2_MFJhA_-8-e
 const app = document.getElementById('app');
 const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const show = html => { app.innerHTML = html; scrollTo(0, 0); };
-let g, me, state, entries = [];
+let g, me, state, entries = [], target; // target：連結指定的活動（?e=），打開後直接進該活動
 
 main();
 
@@ -45,7 +45,8 @@ async function main() {
   try {
     await liff.init({ liffId: LIFF_ID }); // init 之後網址上的 ?g= 才會還原
     if (!liff.isLoggedIn()) return liff.login({ redirectUri: location.href });
-    g = new URLSearchParams(location.search).get('g');
+    const q = new URLSearchParams(location.search);
+    g = q.get('g'); target = q.get('e');
     me = await liff.getProfile();
     await call('load');
     home();
@@ -78,26 +79,48 @@ async function run(fn) {
 const reload = () => run(async () => { await call('load'); home(); });
 
 function home() {
-  if (!state.family) return pickFamily();
+  if (!state.family) return pickFamily(); // 選完家庭會再回到這裡，target 仍有效
+  const i = state.events.findIndex(ev => ev.id === target);
+  target = null; // 只在第一次打開時跳轉；活動過期或找不到就留在列表
+  if (i >= 0) return detail(i);
   show(`<h1>${esc(state.groupName || '家族活動')}</h1>
     ${state.events.length ? state.events.map(eventCard).join('') : '<p class="card">目前沒有活動</p>'}
     <button class="primary wide" onclick="createForm()">＋ 新增活動</button>
     <p class="muted">您是「${esc(state.family)}家」 <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
 }
 
+// 列表只放摘要（Gemini 設計）：整張卡片可點，進詳細頁看名單與報名
 function eventCard(ev, i) {
-  const mine = ev.replies.find(r => r.family === state.family);
-  const replies = ev.replies.map(r => `${esc(r.family)} ${r.count || '不去'}`).join('、');
-  return `<div class="card">
+  return `<div class="card" role="button" onclick="detail(${i})">
+    <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
     <h2>${esc(ev.title)}</h2>
+    <p class="big">共 ${ev.total} 人</p>
+    ${mineTag(ev)}
+    <button class="wide">查看與報名 ➔</button>
+  </div>`;
+}
+
+function mineTag(ev) {
+  const mine = ev.replies.find(r => r.family === state.family);
+  return `<p class="mine ${mine ? 'ok' : ''}"><b>您家：${mine ? (mine.count ? `已報名 ${mine.count} 位 ✅` : '不去') : '尚未回覆'}</b></p>`;
+}
+
+// 詳細頁：操作放上面，長輩不用往下滑；名單放下面
+function detail(i) {
+  const ev = state.events[i];
+  const mine = ev.replies.some(r => r.family === state.family);
+  const replies = ev.replies.map(r => `${esc(r.family)} ${r.count || '不去'}`).join('、');
+  show(`<button class="link" onclick="home()">〈 回活動列表</button>
+    <h1>${esc(ev.title)}</h1>
     <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
     ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
-    <p class="big">目前共 ${ev.total} 位</p>
-    ${replies ? `<div class="muted">${replies}</div>` : ''}
-    ${ev.pending.length ? `<div class="muted">尚未回覆：${ev.pending.map(esc).join('、')}</div>` : ''}
-    <p class="mine ${mine ? 'ok' : ''}"><b>您家：${mine ? (mine.count ? `已報名 ${mine.count} 位 ✅` : '不去') : '尚未回覆'}</b></p>
+    ${mineTag(ev)}
     <button class="primary wide" onclick="pickCount(${i})">${mine ? '修改人數' : '我要報名'}</button>
-  </div>`;
+    <div class="card" style="margin-top:16px">
+      <p class="big">目前共 ${ev.total} 人參加</p>
+      ${replies ? `<div>${replies}</div>` : '<div class="muted">還沒有人回覆</div>'}
+      ${ev.pending.length ? `<div class="muted">尚未回覆：${ev.pending.map(esc).join('、')}</div>` : ''}
+    </div>`);
 }
 
 function fmtDate(d) {
@@ -123,10 +146,10 @@ function pickCount(i) {
   show(`<h1>${esc(ev.title)}</h1><p class="big">${esc(state.family)}家要去幾位？</p>
     <div class="grid">${btns}</div>
     <button class="wide" onclick="signup(${i}, 0)">本次不克參加</button>
-    <button class="wide" onclick="home()">返回</button>`);
+    <button class="wide" onclick="detail(${i})">返回</button>`);
 }
 
-const link = () => `https://liff.line.me/${LIFF_ID}?g=${g}`;
+const link = e => `https://liff.line.me/${LIFF_ID}?g=${g}` + (e ? `&e=${e}` : '');
 
 // 以使用者本人帳號在聊天室發訊息；不是從聊天室打開就略過，失敗也不影響主流程
 async function notify(messages) {
@@ -139,9 +162,8 @@ const signup = (i, n) => run(async () => {
   const { id, title } = state.events[i];
   await call('signup', { eventId: id, count: n });
   const total = state.events.find(e => e.id === id).total;
-  await notify([{ type: 'text', text:
-    (n ? `${state.family}家報名「${title}」${n} 位 ✅` : `${state.family}家：「${title}」不克參加`) +
-    `\n目前共 ${total} 位\n👉 報名／看名單：${link()}` }]);
+  await notify([signupFlex(n ? `${state.family}家報名「${title}」${n} 位 ✅` : `${state.family}家：「${title}」不克參加`,
+    `目前共 ${total} 位`, id)]);
   show(`<p class="big ok">✅ 已送出</p><p class="big">${esc(state.family)}家：${n ? `${n} 位` : '不去'}</p>
     <p>「${esc(title)}」目前共 ${total} 位</p>
     <button class="primary wide" onclick="home()">回活動列表</button>
@@ -184,8 +206,19 @@ async function parseRelay() {
   btn.disabled = false; btn.textContent = '帶入接龍內容';
 }
 
+// 報名小卡片（Gemini 設計）：每戶都會發一則，所以精簡到約三行高
+function signupFlex(line, total, id) {
+  return { type: 'flex', altText: line, contents: { type: 'bubble', size: 'kilo',
+    body: { type: 'box', layout: 'vertical', paddingAll: 'md', contents: [
+      { type: 'text', text: line, weight: 'bold', size: 'sm', wrap: true, color: '#111111' },
+      { type: 'box', layout: 'horizontal', margin: 'md', alignItems: 'center', contents: [
+        { type: 'text', text: total, size: 'xs', color: '#666666', flex: 1, gravity: 'center' },
+        { type: 'button', style: 'primary', color: '#087f3c', height: 'sm', flex: 1,
+          action: { type: 'uri', label: '我也要報名', uri: link(id) } }] }] } } };
+}
+
 // 新活動卡片（Gemini 設計）：發起人之後可長按「設為公告」
-function eventFlex(d) {
+function eventFlex(d, id) {
   const total = d.entries.reduce((n, e) => n + e.count, 0);
   const summary = d.entries.length
     ? `已報名：${d.entries.map(e => `${e.family} ${e.count || '不去'}`).join('、')}（共 ${total} 位）` : '尚無人報名';
@@ -199,14 +232,14 @@ function eventFlex(d) {
         text(`📍 ${d.place || '地點待定'}`, 'md', '#475569'),
         text(`👥 ${summary}`, 'md', '#64748b') ] } ] },
     footer: { type: 'box', layout: 'vertical', contents: [{ type: 'button', style: 'primary', color: '#087f3c', height: 'md',
-      action: { type: 'uri', label: '我要報名', uri: link() } }] } } };
+      action: { type: 'uri', label: '我要報名', uri: link(id) } }] } } };
 }
 
 const create = () => {
   const v = id => document.getElementById(id).value.trim();
   const data = { title: v('t'), date: v('d'), time: v('h'), place: v('p'), entries };
   if (!data.title || !data.date) return alert('請填寫活動名稱與日期');
-  run(async () => { await call('create', data); await notify([eventFlex(data)]); home(); });
+  run(async () => { await call('create', data); await notify([eventFlex(data, state.created)]); home(); });
 };
 </script>
 </body>

@@ -91,15 +91,16 @@ function api(b) {
   if (!b.userId) throw new Error('無法取得 LINE 身分，請從 LINE 裡打開');
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
   if (b.action === 'parse') return parseChain(b.text, today); // 只解析、不寫入，讓發起人先確認
+  let created; // 新活動的 id，讓前端的卡片連結能直接開到這一場
   if (b.action !== 'load') {
     const lock = LockService.getScriptLock(); // 多人同時送出時排隊寫入，避免互相覆蓋
     lock.waitLock(10000);
-    try { write(b); } finally { lock.releaseLock(); }
+    try { created = write(b); } finally { lock.releaseLock(); }
   }
   const families = rows('families').filter(r => r.groupId === b.g).map(r => r.name);
   const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
   const events = rows('events').filter(r => r.groupId === b.g);
-  return { groupName: group.name, families: families, family: me ? me.family : null,
+  return { groupName: group.name, families: families, family: me ? me.family : null, created: created,
            events: summarize(events, rows('signups'), families, today) };
 }
 
@@ -123,6 +124,7 @@ function write(b) {
       addFamily(b.g, family);
       upsert('signups', ['eventId', 'family'], { eventId: id, family: family, count: count, userId: b.userId, updatedAt: now });
     });
+    return id;
   } else if (b.action === 'signup') {
     const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
     const count = Number(b.count);
@@ -191,12 +193,20 @@ function table(name, ss = MAIN_TABLES.includes(name) ? SpreadsheetApp.getActive(
 }
 
 function rows(name) {
-  const [head, ...data] = table(name).getDataRange().getValues();
+  const sh = table(name);
+  const tz = sh.getParent().getSpreadsheetTimeZone();
+  const [head, ...data] = sh.getDataRange().getValues();
   return data.map((r, i) => {
     const o = { _row: i + 2 };
-    head.forEach((h, j) => { o[h] = String(r[j]); });
+    head.forEach((h, j) => { o[h] = cell(r[j], h, tz); });
     return o;
   });
+}
+
+// 試算表會把「2026-11-14」「11:30」自動轉成日期（手動編輯時一定會），讀回來還原成程式用的字串格式
+function cell(v, h, tz) {
+  if (Object.prototype.toString.call(v) !== '[object Date]') return String(v);
+  return Utilities.formatDate(v, tz, h === 'time' ? 'HH:mm' : 'yyyy-MM-dd');
 }
 
 function add(name, obj) { table(name).appendRow(TABLES[name].map(h => String(obj[h] ?? ''))); }
