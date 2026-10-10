@@ -115,6 +115,18 @@ ev = call('u2', 'signup', { eventId: party, count: 2 }).events[0];
 assert.equal(ev.total, 3);
 assert.deepEqual(ev.replies.find(r => r.family === '江'), { family: '江', count: 2 });
 
+// 編輯：只有建立者（u1）能改；改時間後報名照舊，不用大家重報
+assert.equal(call('u1', 'load').events.find(e => e.id === party).canEdit, true);
+assert.equal(call('u3', 'load').events.find(e => e.id === party).canEdit, false);
+const edit = (u, data) => call(u, 'edit', { eventId: party, title: '11月慶生餐會', date: '2026-11-14', time: '11:30', place: '龍潭蔣府宴', ...data });
+assert.match(edit('u3', { time: '12:00' }).error, /建立/, '非建立者不能改（長輩誤觸、或改到別人的活動）');
+assert.match(edit('u1', { date: '2026-10-31' }).error, /早於今天/, '改成過去日期會讓活動從列表消失');
+assert.ok(edit('u1', { date: '2027-02-31' }).error, '不存在的日期不能存（直接呼叫 API 時）');
+assert.ok(edit('u1', { time: '25:99' }).error, '時間只能空白或 HH:mm');
+ev = edit('u1', { time: '12:00' }).events.find(e => e.id === party);
+assert.deepEqual([ev.time, ev.total, ev.replies.length], ['12:00', 3, 3]);
+assert.equal(books.S1.events.getDataRange().getValues().filter(r => r[0] === party)[0][6], 'u1', '編輯後建立者不變');
+
 // 人數超出範圍、別的群組的活動、別的群組的連結都要擋下
 assert.ok(call('u1', 'signup', { eventId: party, count: 9 }).error);
 say('綁定', inGroup('G2', 'u8')); // u8 的試算表是 S2

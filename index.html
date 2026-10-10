@@ -134,7 +134,8 @@ function detail(i) {
       <p class="big">目前共 ${ev.total} 人參加</p>
       ${replies ? `<div>${replies}</div>` : '<div class="muted">還沒有人回覆</div>'}
       ${ev.pending.length ? `<div class="muted">尚未回覆：${ev.pending.map(esc).join('、')}</div>` : ''}
-    </div>`);
+    </div>
+    ${ev.canEdit ? `<button class="wide" onclick="createForm(${i})">✏️ 編輯活動內容</button>` : ''}`);
 }
 
 function fmtDate(d) {
@@ -174,21 +175,24 @@ const signup = (i, n) => run(async () => {
     <button class="wide" onclick="liff.closeWindow()">關閉</button>`);
 });
 
-function createForm() {
+// 新增與編輯共用同一張表單；編輯時帶入原值、不顯示接龍匯入
+function createForm(i) {
+  const ev = i === undefined ? null : state.events[i];
   const today = new Date().toLocaleDateString('sv'); // yyyy-mm-dd
+  const val = k => ev ? esc(ev[k]) : '';
   entries = [];
-  show(`<h1>新增活動</h1>
-    <label for="raw">從 LINE 接龍快速帶入（選填）</label>
+  show(`<h1>${ev ? '編輯活動' : '新增活動'}</h1>
+    ${ev ? '' : `<label for="raw">從 LINE 接龍快速帶入（選填）</label>
     <textarea id="raw" rows="3" placeholder="在此貼上 LINE 群組接龍文字..."></textarea>
     <button type="button" id="pb" class="wide" onclick="parseRelay()">帶入接龍內容</button>
-    <div id="found"></div>
-    <label for="t" style="margin-top:16px">活動名稱</label><input id="t" placeholder="例如：11月慶生餐會" maxlength="30">
-    <label for="d">日期</label><input id="d" type="date" min="${today}">
-    <label for="h">時間</label><input id="h" type="time">
-    <label for="p">地點</label><input id="p" placeholder="例如：龍潭蔣府宴" maxlength="50">
+    <div id="found"></div>`}
+    <label for="t" style="margin-top:16px">活動名稱</label><input id="t" placeholder="例如：11月慶生餐會" maxlength="30" value="${val('title')}">
+    <label for="d">日期</label><input id="d" type="date" min="${today}" value="${val('date')}">
+    <label for="h">時間</label><input id="h" type="time" value="${val('time')}">
+    <label for="p">地點</label><input id="p" placeholder="例如：龍潭蔣府宴" maxlength="50" value="${val('place')}">
     <div id="list"></div>
-    <button class="primary wide" onclick="create()">建立活動</button>
-    <button class="wide" onclick="home()">取消</button>`);
+    <button class="primary wide" onclick="${ev ? `save(${i})` : 'create()'}">${ev ? '儲存修改' : '建立活動'}</button>
+    <button class="wide" onclick="${ev ? `detail(${i})` : 'home()'}">取消</button>`);
 }
 
 // 貼上接龍 → 後端解析 → 帶入欄位並列出已接龍的家庭；解析不到就留空讓人手填
@@ -244,12 +248,54 @@ function eventFlex(d, id) {
       action: { type: 'uri', label: '我要報名', uri: link(id) } }] } } };
 }
 
-const create = () => {
+function formData() {
   const v = id => document.getElementById(id).value.trim();
-  const data = { title: v('t'), date: v('d'), time: v('h'), place: v('p'), entries };
+  const data = { title: v('t'), date: v('d'), time: v('h'), place: v('p') };
   if (!data.title || !data.date) return alert('請填寫活動名稱與日期');
-  run(async () => { await call('create', data); await notify([eventFlex(data, state.created)]); home(); });
+  return data;
+}
+
+const create = () => {
+  const data = formData();
+  if (data) run(async () => { await call('create', { ...data, entries }); await notify([eventFlex({ ...data, entries }, state.created)]); home(); });
 };
+
+// 只有日期／時間／地點變了才通知群組；只改名稱（例如加「（取消）」）不發
+const save = i => {
+  const old = state.events[i], data = formData();
+  if (!data || !confirm('確定儲存修改？')) return;
+  const changes = [['日期', fmtDate(old.date), fmtDate(data.date)], ['時間', old.time || '未定', data.time || '未定'],
+                   ['地點', old.place || '未定', data.place || '未定']]
+    .filter(([, a, b]) => a !== b).map(([k, a, b]) => `${k}：${a} → ${b}`);
+  run(async () => {
+    await call('edit', { eventId: old.id, ...data });
+    if (changes.length) await notify([changeFlex({ ...data, id: old.id }, changes.join('\n'))]);
+    const j = state.events.findIndex(e => e.id === old.id);
+    j >= 0 ? detail(j) : home();
+  });
+};
+
+// 活動異動卡片（Gemini 設計）：橘色標籤＋變更內容，按鈕直達該活動
+function changeFlex(ev, changes) {
+  const row = (k, v, bold) => ({ type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+    { type: 'text', text: k, color: '#6b7280', size: 'sm', flex: 1 },
+    { type: 'text', text: v, wrap: true, color: '#111827', size: 'md', flex: 4, ...(bold && { weight: 'bold' }) }] });
+  return { type: 'flex', altText: `⚠️ 活動異動通知：${ev.title}`, contents: { type: 'bubble', size: 'mega',
+    header: { type: 'box', layout: 'horizontal', paddingBottom: 'none', contents: [
+      { type: 'box', layout: 'horizontal', flex: 0, backgroundColor: '#e65100', paddingAll: 'xs', paddingStart: 'md',
+        paddingEnd: 'md', cornerRadius: 'md', contents: [{ type: 'text', text: '⚠️ 活動異動', color: '#ffffff', size: 'sm', weight: 'bold' }] }] },
+    body: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: ev.title, weight: 'bold', size: 'xl', wrap: true, color: '#1f2937' },
+      { type: 'box', layout: 'vertical', backgroundColor: '#fffbeb', paddingAll: 'md', cornerRadius: 'md', margin: 'md',
+        borderColor: '#fde68a', borderWidth: 'semi-bold', contents: [
+          { type: 'text', text: '異動內容', size: 'xs', color: '#b45309', weight: 'bold' },
+          { type: 'text', text: changes, size: 'md', color: '#9a3412', wrap: true, weight: 'bold' }] },
+      { type: 'separator', margin: 'lg' },
+      { type: 'box', layout: 'vertical', margin: 'lg', spacing: 'sm', contents: [
+        row('時間', `${fmtDate(ev.date)} ${ev.time}`.trim(), true), row('地點', ev.place || '地點待定')] }] },
+    footer: { type: 'box', layout: 'vertical', contents: [{ type: 'button', style: 'primary', color: '#087f3c', height: 'md',
+      action: { type: 'uri', label: '確認是否出席', uri: link(ev.id) } }] } } };
+}
 </script>
 </body>
 </html>

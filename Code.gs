@@ -101,7 +101,7 @@ function api(b) {
   const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
   const events = rows('events').filter(r => r.groupId === b.g);
   return { groupName: group.name, families: families, family: me ? me.family : null, created: created,
-           events: summarize(events, rows('signups'), families, today) };
+           events: summarize(events, rows('signups'), families, today, b.userId) };
 }
 
 function write(b) {
@@ -112,11 +112,8 @@ function write(b) {
     addFamily(b.g, name);
     upsert('members', ['groupId', 'userId'], { groupId: b.g, userId: b.userId, family: name });
   } else if (b.action === 'create') {
-    const title = String(b.title || '').trim().slice(0, 30);
-    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) throw new Error('請填寫活動名稱與日期');
     const id = Utilities.getUuid().slice(0, 8);
-    add('events', { id: id, groupId: b.g, title: title, date: b.date,
-                    time: String(b.time || ''), place: String(b.place || '').trim().slice(0, 50), createdBy: b.userId, createdAt: now });
+    add('events', Object.assign(eventFields(b), { id: id, groupId: b.g, createdBy: b.userId, createdAt: now }));
     (b.entries || []).forEach(en => { // 從接龍帶入的報名，發起人已在畫面上確認過
       const family = String(en.family || '').trim().slice(0, 10);
       const count = Number(en.count);
@@ -125,6 +122,12 @@ function write(b) {
       upsert('signups', ['eventId', 'family'], { eventId: id, family: family, count: count, userId: b.userId, updatedAt: now });
     });
     return id;
+  } else if (b.action === 'edit') { // 只有建立者能改；報名不動，改期後大家不用重報
+    const ev = rows('events').find(r => r.id === b.eventId && r.groupId === b.g);
+    if (!ev) throw new Error('找不到這個活動');
+    if (ev.createdBy !== b.userId) throw new Error('只有建立活動的人可以編輯');
+    if (b.date < Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd')) throw new Error('日期不能早於今天');
+    upsert('events', ['id'], Object.assign(ev, eventFields(b)));
   } else if (b.action === 'signup') {
     const me = rows('members').find(r => r.groupId === b.g && r.userId === b.userId);
     const count = Number(b.count);
@@ -135,6 +138,17 @@ function write(b) {
   } else {
     throw new Error('未知的動作');
   }
+}
+
+// 新增與編輯共用的活動欄位檢查；日期要真的存在（擋 2026-02-31），時間只能空白或 HH:mm
+function eventFields(b) {
+  const title = String(b.title || '').trim().slice(0, 30);
+  const date = String(b.date || ''), time = String(b.time || '');
+  const real = /^\d{4}-\d{2}-\d{2}$/.test(date) && !isNaN(new Date(date + 'T00:00:00Z')) &&
+    new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
+  if (!title || !real) throw new Error('請填寫活動名稱與正確的日期');
+  if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error('時間格式不正確');
+  return { title: title, date: date, time: time, place: String(b.place || '').trim().slice(0, 50) };
 }
 
 function addFamily(g, name) {
@@ -166,13 +180,14 @@ function parseChain(text, today) {
 }
 
 // 統計：只列今天以後的活動，依日期時間排序；count 0 代表「不去」，不算尚未回覆
-function summarize(events, signups, families, today) {
+function summarize(events, signups, families, today, userId) {
   return events
     .filter(e => e.date >= today)
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
     .map(e => {
       const replies = signups.filter(s => s.eventId === e.id).map(s => ({ family: s.family, count: Number(s.count) }));
       return { id: e.id, title: e.title, date: e.date, time: e.time, place: e.place, replies: replies,
+               canEdit: e.createdBy === userId, // 只回布林，不把建立者的 userId 傳給其他人
                total: replies.reduce((n, r) => n + r.count, 0),
                pending: families.filter(f => !replies.some(r => r.family === f)) };
     });
