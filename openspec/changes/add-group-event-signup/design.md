@@ -6,7 +6,7 @@
 
 **Goals:** 一個前端檔、一個後端檔；主試算表＋各用戶自己的試算表；Bot 不消耗訊息額度。
 
-**Non-Goals:** 刪除活動、編輯活動（直接改試算表）、提醒推播（Bot push）、管理後台、ID Token 驗證、解除群組綁定（直接改主試算表）。
+**Non-Goals:** 刪除活動（改標題加「（取消）」或直接改試算表）、提醒推播（Bot push）、管理後台、ID Token 驗證、解除群組綁定（直接改主試算表）。
 
 ## Decisions
 
@@ -66,6 +66,11 @@ signups 以 (eventId, family) 為鍵 upsert；寫入時用 `LockService` 避免�
 
 ### 11. 新活動卡片：發起人帳號代發 Flex，不用 Bot
 Messaging API 無法設定群組公告；Bot push 計額度（所有用戶共用）。故建立活動後以 `liff.sendMessages()` 發 Flex bubble（只用 URI action），發起人長按「設為公告」。卡片樣式由 Gemini 設計。
+
+### 12. 編輯活動：僅建立者、報名保留、改期才通知
+- API `edit`：比對 `events.createdBy === userId`，驗證名稱必填、日期 ≥ 今天（台灣時間），只覆寫 title/date/time/place。`load` 回傳每場活動的 `canEdit`（不外流 createdBy 的 userId）。
+- 前端沿用新增活動表單（不顯示接龍匯入），儲存前 `confirm()` 二次確認；日期/時間/地點有變才發「活動異動」卡片（Gemini 設計）。
+- 否決：所有人可編輯（長輩誤觸）、刪除（不可逆）、允許過去日期並標「已結束」（列表本就不顯示過去活動，多一套狀態不值得）。
 
 ## Risks / Trade-offs
 

@@ -23,4 +23,5 @@
 - [x] 4.5 接龍匯入：`parseChain` 與 `parse` API、`create` 帶 entries，以 `node test.js` 驗證範例與解析失敗
 - [x] 4.6 新增活動頁「貼上接龍」區塊（依 Gemini 設計），以手機寬度截圖驗證
 - [ ] 4.7 建立活動後以 Flex 卡片通知群組（依 Gemini 設計），失敗不影響建立；於 LINE 群組實測驗證
+- [ ] 4.8 編輯活動：後端 `edit`（僅建立者、日期 ≥ 今天、報名保留）與 `canEdit`，以 `node test.js` 驗證；前端編輯按鈕、表單、異動卡片，截圖驗證
 - [ ] 4.4 README：專用 Google 帳號建議、Google 授權「未驗證的應用程式」步驟、用戶端設定流程；之後再執行 3.1
