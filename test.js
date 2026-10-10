@@ -228,6 +228,15 @@ assert.deepEqual(s.events.find(e => e.id === winter).replies, [{ family: '花', 
 assert.deepEqual(s.events.find(e => e.id === newYear).replies, [], '多筆報名都要刪到，不能刪錯列');
 assert.ok(sheets.signups.getDataRange().getValues().some(r => r[1] === '阿姨'), '已結束活動的報名保留');
 
+// 進群歡迎：連結、隱私說明，以及可長按複製的「#新活動」範例——範例原封不動傳回群組就要能建立活動
+hook([{ type: 'join', source: inGroup('G8'), replyToken: 'r' }]);
+const welcome = JSON.parse(fetched.at(-1).opt.payload).messages.map(m => m.text);
+assert.equal(welcome.length, 3);
+assert.match(welcome[0], /g=G8[\s\S]*privacy\.html/);
+say(welcome[2], inGroup('G8', 'u1'));
+assert.equal(lastMsg().type, 'flex', '複製範例直接送出就建立活動');
+assert.equal(call('u1', 'load', {}, 'G8').events[0].title, '11月慶生餐會');
+
 // 效能：每張分頁一次請求只讀一次
 reads = 0; call('u1', 'load');
 assert.equal(reads, 5, '打開網頁只讀 groups、families、members、events、signups 各一次');
