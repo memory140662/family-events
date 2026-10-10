@@ -64,9 +64,9 @@ async function main() {
     home();
   } catch (e) {
     if (e.code === 'unbound') return show(`<h1>⚠️ 此群組尚未啟用</h1>
-      <p>這個群組還沒開啟功能喔！請先在 LINE 群組傳送「<b>報名</b>」即可啟用。</p>
+      <p>這個群組還沒開啟功能喔！請先在 LINE 群組傳送「<b>#報名</b>」即可啟用。</p>
       <button class="primary wide" onclick="liff.closeWindow()">關閉視窗</button>
-      <button class="wide" onclick="location.reload()">已傳送報名，再試一次</button>`);
+      <button class="wide" onclick="location.reload()">已傳送 #報名，再試一次</button>`);
     show(`<p>發生錯誤：${esc(e.message)}</p><button class="primary wide" onclick="location.reload()">重新整理</button>`);
   }
 }

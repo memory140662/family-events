@@ -17,7 +17,7 @@
 - 替代方案：Firebase / Cloudflare Workers——需帳號與部署工具，維護成本較高；試算表可讓使用者直接查看與修正資料。
 
 ### 2. 群組辨識靠 Bot 的群組事件
-LIFF 無法取得 groupId，故 Bot 在 join 事件取得 `source.groupId` 自動登記到 `groups` 表，並以 reply 回覆 `https://liff.line.me/<LIFF_ID>?g=<groupId>`。groupId 長且不可猜，兼作存取憑證；後端只接受已登記的 groupId。群組輸入「報名」時若未登記（舊版「綁定」流程加入的群組）則補登記。
+LIFF 無法取得 groupId，故 Bot 在 join 事件取得 `source.groupId` 自動登記到 `groups` 表，並以 reply 回覆 `https://liff.line.me/<LIFF_ID>?g=<groupId>`。groupId 長且不可猜，兼作存取憑證；後端只接受已登記的 groupId。群組輸入「#報名」時若未登記（舊版「綁定」流程加入的群組）則補登記。
 
 ### 3. 群組通知用 `liff.sendMessages()`，不用 Bot push
 push 到群組按成員數計入額度；sendMessages 以使用者本人身分發送、不計額度。需 `chat_message.write` scope，僅在從聊天室開啟時可用。
