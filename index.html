@@ -65,6 +65,11 @@ async function main() {
     me = await liff.getProfile();
     await call('load');
     home();
+    post('syncName').then(r => { // 背景同步群組名稱（LINE 改名不會通知 Bot），不拖慢載入；列表標題還是舊名就順手換掉
+      const h = document.querySelector('h1');
+      if (h && h.textContent === state.groupName) h.textContent = r.groupName;
+      state.groupName = r.groupName;
+    }).catch(() => {});
   } catch (e) {
     if (e.code === 'unbound') return show(`<h1>⚠️ 此群組尚未啟用</h1>
       <p>這個群組還沒開啟功能喔！請先在 LINE 群組傳送「<b>#報名</b>」即可啟用。</p>

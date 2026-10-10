@@ -20,13 +20,14 @@ const fakeSheet = () => {
     deleteRow: row => data.splice(row - 1, 1),
   };
 };
+let lineGroupName = '江家群組'; // LINE 上目前的群組名稱
 let uuid = 0, clock = '2026-11-01T12:00';
 const ctx = {
   SpreadsheetApp: { getActive: () => ({ getSheetByName: n => sheets[n], insertSheet: n => (sheets[n] = fakeSheet()) }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ HOOK_KEY: 'k', LIFF_ID: 'L', CHANNEL_TOKEN: 't' })[k] }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   Utilities: { formatDate: (d, tz, f) => f.includes('HH') ? clock : clock.slice(0, 10), getUuid: () => 'ev' + ++uuid + '-xxxxxxx' }, // 「今天」固定為 2026-11-01
-  UrlFetchApp: { fetch: (url, opt) => { fetched.push({ url, opt }); return { getContentText: () => '{"groupName":"江家群組"}' }; } },
+  UrlFetchApp: { fetch: (url, opt) => { fetched.push({ url, opt }); return { getContentText: () => JSON.stringify({ groupName: lineGroupName }) }; } },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ s, setMimeType() { return this; } }) },
 };
 vm.createContext(ctx);
@@ -236,6 +237,14 @@ assert.match(welcome[0], /g=G8[\s\S]*privacy\.html/);
 say(welcome[2], inGroup('G8', 'u1'));
 assert.equal(lastMsg().type, 'flex', '複製範例直接送出就建立活動');
 assert.equal(call('u1', 'load', {}, 'G8').events[0].title, welcome[2].split('\n')[1], '活動名稱就是範例第一行（改範例不用改測試）');
+
+// 群組在 LINE 改名：網頁打開後背景同步；查不到名稱（例如 Bot 已被移出）就保留原名
+lineGroupName = '江家大家庭';
+assert.equal(call('u1', 'syncName').groupName, '江家大家庭');
+assert.equal(call('u1', 'load').groupName, '江家大家庭');
+lineGroupName = '';
+call('u1', 'syncName');
+assert.equal(call('u1', 'load').groupName, '江家大家庭');
 
 // 效能：每張分頁一次請求只讀一次
 reads = 0; call('u1', 'load');
