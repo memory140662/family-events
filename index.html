@@ -186,7 +186,8 @@ function fmtDate(d) {
 }
 
 function pickFamily() {
-  show(`<h1>請問怎麼稱呼您？</h1>
+  show(`${state.family ? '<button class="link" onclick="home()">〈 不換了，回活動列表</button>' : ''}
+    <h1>請問怎麼稱呼您？</h1>
     <div class="grid">${state.families.map((f, i) => `<button onclick="join(state.families[${i}])">${esc(f)}</button>`).join('')}</div>
     <div class="card" style="margin-top:24px">
       <label for="fam">清單裡沒有？新增稱呼</label>
