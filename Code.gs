@@ -36,12 +36,15 @@ function onLineEvent(ev) {
   if (!g || !(ev.type === 'join' || /^[#＃]\s*報名$/.test(text) || newEvent)) return;
   if (!rows('groups').some(r => r.groupId === g)) add('groups', { groupId: g, name: groupName(g), joinedAt: new Date().toISOString() });
   if (newEvent) return reply(ev.replyToken, chatEvent(g, src.userId, text.replace(/^[#＃]\s*新活動/, '')));
-  reply(ev.replyToken, ev.type === 'join'
-    ? '大家好！我是活動報名小幫手 🎉\n報名、看名單、新增活動都點這裡：\n' + link(g) + '\n\n💡 建議把這則訊息設為公告。忘記連結時，在群組輸入「#報名」即可。' +
-      '\n📌 小幫手僅接收訊息以辨識關鍵字，絕不儲存任何聊天內容，請安心使用。'
+  reply(ev.replyToken, ev.type === 'join' ? [ // 範例獨立一則：長按複製整則就是可直接送出的指令（Gemini 文案）
+    '大家好！我是活動報名小幫手 🎉\n報名、看名單、新增活動都點這裡：\n' + link(g) + '\n\n💡 建議把這則訊息設為公告。忘記連結時，在群組輸入「#報名」即可。' +
+      '\n\n📌 小幫手會收到群組訊息，但只處理「#報名」「#新活動」指令，不儲存一般聊天，請安心使用。\n隱私說明：' + PRIVACY,
+    '💬 想用接龍辦活動？\n長按複製下一則，改成你的活動內容後傳到群組，小幫手就會自動建立活動。\n\n💡 建立後要改時間、地點，建立的人點進網頁就能修改。',
+    CHAT_EXAMPLE]
     : '活動報名請點：\n' + link(g));
 }
 
+const PRIVACY = 'https://memory140662.github.io/family-events/privacy.html';
 const CHAT_EXAMPLE = '#新活動\n11月慶生餐會\n日時：11/14（六）11:30\n場所：龍潭蔣府宴\n花*1\n江*3';
 
 // 「#新活動＋接龍內容」直接建立活動（明確指令才處理，不碰一般聊天）；回覆新活動卡片，有錯由建立者到網頁編輯
@@ -89,7 +92,8 @@ function lineApi(path, payload) {
   return UrlFetchApp.fetch('https://api.line.me/v2/bot/' + path, opt);
 }
 
-function reply(token, msg) { lineApi('message/reply', { replyToken: token, messages: [typeof msg === 'string' ? { type: 'text', text: msg } : msg] }); }
+// msg 可以是一則或多則（reply 一次最多 5 則，都不計額度）
+function reply(token, msg) { lineApi('message/reply', { replyToken: token, messages: [].concat(msg).map(m => typeof m === 'string' ? { type: 'text', text: m } : m) }); }
 
 // 多人同時送出時排隊寫入，避免互相覆蓋
 function locked(fn) {
