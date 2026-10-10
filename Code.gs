@@ -127,7 +127,8 @@ function api(b) {
   const events = rows('events').filter(r => r.groupId === b.g);
   return { groupName: group.name, families: families, family: me ? me.family : null, created: created,
            unclaimed: families.filter(f => !members.some(r => r.family === f)), // 可刪的稱呼：沒有人選用
-           events: summarize(events, rows('signups'), families, now, b.userId) };
+           events: summarize(events, rows('signups'), families, now, b.userId),
+           past: summarize(events, rows('signups'), families, now, b.userId, true) };
 }
 
 function write(b) {
@@ -246,17 +247,15 @@ function ended(e, now) {
 }
 const ENDED = '這場聚會已經結束囉！下次再一起參加';
 
-// 統計：只列還沒結束的活動，依日期時間排序；count 0 代表「不去」，不算尚未回覆
-function summarize(events, signups, families, now, userId) {
-  return events
-    .filter(e => !ended(e, now))
-    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-    .map(e => {
+// 統計：還沒結束的活動依日期時間排序；past 為已結束的最近 20 場（新到舊）。count 0 代表「不去」，不算尚未回覆
+function summarize(events, signups, families, now, userId, past) {
+  const list = events.filter(e => ended(e, now) === !!past).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  return (past ? list.reverse().slice(0, 20) : list).map(e => {
       const replies = signups.filter(s => s.eventId === e.id).map(s => ({ family: s.family, count: Number(s.count) }));
       return { id: e.id, title: e.title, date: e.date, time: e.time, place: e.place, replies: replies,
                canEdit: e.createdBy === userId, // 只回布林，不把建立者的 userId 傳給其他人
                total: replies.reduce((n, r) => n + r.count, 0),
-               pending: families.filter(f => !replies.some(r => r.family === f)) };
+               pending: past ? [] : families.filter(f => !replies.some(r => r.family === f)) }; // 成員會變，已結束的無法還原當時誰沒回
     });
 }
 

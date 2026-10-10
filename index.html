@@ -36,6 +36,8 @@
   .ev-meta { font-size: 20px; color: #555; margin-bottom: 4px; }
   .ev-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
   .ev-foot .mine { margin: 0; }
+  .card.ev.past { box-shadow: none; border: 1px solid #ddd; }
+  .tag-end, .notice { background: #eee; color: #444; padding: 4px 12px; border-radius: 8px; font-weight: bold; }
   .ev-total { font-size: 20px; font-weight: bold; color: #087f3c; }
   /* iOS（LINE 內建瀏覽器）的日期／時間框有原生外觀與最小寬度，會撐破版面、文字置中 */
   input[type=date], input[type=time] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; line-height: 52px; }
@@ -106,6 +108,7 @@ function home() {
   show(`<h1>${esc(state.groupName || '家族活動')}</h1>
     ${state.events.length ? state.events.map(eventCard).join('') : '<p class="card">目前沒有活動</p>'}
     <button class="primary wide" onclick="createForm()">＋ 新增活動</button>
+    <button class="link" onclick="pastList()">📜 看以前辦過的聚會</button>
     <p class="muted">目前是<b>「${esc(state.family)}」</b> <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
 }
 
@@ -144,6 +147,33 @@ function detail(i) {
       ${ev.pending.length ? `<div class="muted">尚未回覆：${ev.pending.map(esc).join('、')}</div>` : ''}
     </div>
     ${ev.canEdit ? `<button class="wide" onclick="createForm(${i})">✏️ 編輯活動內容</button>` : ''}`);
+}
+
+// 歷史活動：唯讀（Gemini：白底＋「已結束」標籤、頁首提示、沒有任何報名按鈕）
+function pastList() {
+  show(`<button class="link" onclick="home()">〈 回活動列表</button>
+    <h1>以前辦過的聚會</h1>
+    ${state.past.length ? `<p class="muted">最近 ${state.past.length} 場</p>` + state.past.map((ev, i) => `<div class="card ev past" role="button" onclick="pastDetail(${i})">
+      <div class="ev-head"><h2>${esc(ev.title)}</h2><span class="ev-arrow">›</span></div>
+      <div class="ev-meta">📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
+      ${ev.place ? `<div class="ev-meta">📍 ${esc(ev.place)}</div>` : ''}
+      <div class="ev-foot"><span class="ev-total">共 ${ev.total} 人</span><span class="tag-end">已結束</span></div>
+    </div>`).join('') : '<p class="card">還沒有已結束的聚會</p>'}`);
+}
+
+function pastDetail(i) {
+  const ev = state.past[i];
+  const replies = ev.replies.map(r => `${esc(r.family)} ${r.count || '不去'}`).join('、');
+  show(`<button class="link" onclick="pastList()">〈 回以前的聚會</button>
+    <h1>${esc(ev.title)}</h1>
+    <p class="notice">本場聚會已圓滿結束</p>
+    <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
+    ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
+    <div class="card" style="margin-top:16px">
+      <p class="big">共 ${ev.total} 人參加</p>
+      ${replies ? `<div>${replies}</div>` : '<div class="muted">沒有報名紀錄</div>'}
+    </div>
+    <button class="primary wide" onclick="pastList()">返回</button>`);
 }
 
 function fmtDate(d) {

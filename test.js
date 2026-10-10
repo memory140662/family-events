@@ -208,6 +208,9 @@ assert.ok(listed('u1', '11月慶生餐會'));
 assert.ok(!call('u3', 'signup', { eventId: party, count: 2 }).error);
 clock = '2026-11-14T15:00';
 assert.ok(!listed('u1', '11月慶生餐會'));
+const old = call('u1', 'load').past.find(e => e.id === party); // 結束後移到「以前辦過的聚會」，報名照樣看得到
+assert.ok(old && old.total > 0 && old.replies.length);
+assert.deepEqual(old.pending, [], '已結束的不列尚未回覆（成員會變，無法還原當時）');
 assert.match(call('u3', 'signup', { eventId: party, count: 1 }).error, /結束/);
 assert.match(edit('u1', { date: '2026-11-14', time: '12:00' }).error, /結束/, '結束後不能改（列表已看不到，只擋直接呼叫 API）');
 clock = '2026-12-20T23:59'; // 尾牙沒填時間
@@ -245,6 +248,13 @@ assert.equal(call('u1', 'load').groupName, '江家大家庭');
 lineGroupName = '';
 call('u1', 'syncName');
 assert.equal(call('u1', 'load').groupName, '江家大家庭');
+
+// 歷史活動：新到舊、最多 20 場，只看自己群組
+hook([{ type: 'join', source: inGroup('G9'), replyToken: 'r' }]);
+for (let d = 1; d <= 22; d++) call('u1', 'create', { title: '聚' + d, date: '2026-01-' + String(d).padStart(2, '0') }, 'G9');
+const past = call('u1', 'load', {}, 'G9').past;
+assert.equal(past.length, 20);
+assert.deepEqual([past[0].title, past[19].title], ['聚22', '聚3']);
 
 // 效能：每張分頁一次請求只讀一次
 reads = 0; call('u1', 'load');

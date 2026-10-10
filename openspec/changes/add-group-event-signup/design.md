@@ -81,6 +81,11 @@ Messaging API 無法設定群組公告；Bot push 計額度（所有用戶共用
 - `rows()` 只讀 `getDisplayValues()`（日期時間本就由顯示文字還原）；同次執行內快取、回傳副本，`add`/`put`/`del` 寫入時清該表、`doPost` 與 `locked()` 取得鎖後清空。打開網頁 5 次、報名 6 次讀取。
 - 不採：Sheets 進階服務一次批次讀取（需額外啟用設定）、CacheService 跨請求快取（失效複雜）。
 
+### 17. 歷史活動：唯讀、最近 20 場（三方共識）
+- `load` 多回 `past`（`summarize(..., true)`：已結束、新到舊、最多 20 場、pending 為空）；events/signups 本已讀取，不增加試算表讀取。
+- 前端：列表底部「📜 看以前辦過的聚會」→ 白底卡片＋「已結束」標籤 → 唯讀詳細頁（「本場聚會已圓滿結束」提示、無人數按鈕、無編輯）（Gemini）。註明「最近 N 場」、不列尚未回覆（成員會變，無法還原當時）（Codex）。
+- 與決策 12「列表不顯示過去活動」不衝突：歷史頁只供查看，過去活動仍不可報名或編輯。
+
 ## Risks / Trade-offs
 
 - [Apps Script 對 POST 回 302，LINE 後台的 Verify 按鈕會失敗] → 事件仍會送達並執行；README 註明忽略 Verify 結果，以實際邀 Bot 入群測試。
