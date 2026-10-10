@@ -25,7 +25,7 @@
   .warn { color: #b45309; font-weight: bold; }
   input, textarea { font: inherit; width: 100%; min-height: 56px; padding: 0 12px; margin: 4px 0 16px; border: 2px solid #bbb; border-radius: 12px; background: #fff; }
   textarea { padding: 8px 12px; }
-  /* 活動列表卡片（Gemini 設計）：標題 → 時間 → 地點 → 共幾人／您家狀態 */
+  /* 活動列表卡片（Gemini 設計）：標題 → 時間 → 地點 → 共幾人／您的狀態 */
   .card.ev { padding: 12px 16px; margin-bottom: 12px; cursor: pointer; }
   .ev-head { display: flex; justify-content: space-between; align-items: baseline; }
   .ev h2 { font-size: 22px; margin: 0 0 4px; }
@@ -98,7 +98,7 @@ function home() {
   show(`<h1>${esc(state.groupName || '家族活動')}</h1>
     ${state.events.length ? state.events.map(eventCard).join('') : '<p class="card">目前沒有活動</p>'}
     <button class="primary wide" onclick="createForm()">＋ 新增活動</button>
-    <p class="muted">您是 🏠${esc(state.family)} <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
+    <p class="muted">目前是<b>「${esc(state.family)}」</b> <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
 }
 
 // 列表只放摘要（Gemini 設計）：整張卡片可點，進詳細頁看名單與報名
@@ -113,7 +113,7 @@ function eventCard(ev, i) {
 
 function mineTag(ev) {
   const mine = ev.replies.find(r => r.family === state.family);
-  return `<p class="mine ${mine ? 'ok' : ''}"><b>您家：${mine ? (mine.count ? `已報名 ${mine.count} 位 ✅` : '不去') : '尚未回覆'}</b></p>`;
+  return `<p class="mine ${mine ? 'ok' : ''}"><b>您：${mine ? (mine.count ? `已報名 ${mine.count} 位 ✅` : '不去') : '尚未回覆'}</b></p>`;
 }
 
 // 詳細頁：操作放上面，長輩不用往下滑；名單放下面
@@ -127,7 +127,7 @@ function detail(i) {
     <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
     ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
     ${mineTag(ev)}
-    <p class="big">🏠${esc(state.family)} 參加人數？</p>
+    <p class="big">「${esc(state.family)}」參加人數？</p>
     <div class="grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => pick(n, n)).join('')}</div>
     ${pick(0, '本次不克參加', 'wide')}
     <div class="card" style="margin-top:16px">
@@ -144,16 +144,32 @@ function fmtDate(d) {
 }
 
 function pickFamily() {
-  show(`<h1>請問您是哪一家？</h1>
+  show(`<h1>請問怎麼稱呼您？</h1>
     <div class="grid">${state.families.map((f, i) => `<button onclick="join(state.families[${i}])">${esc(f)}</button>`).join('')}</div>
     <div class="card" style="margin-top:24px">
-      <label for="fam">清單裡沒有？新增家庭稱呼</label>
-      <input id="fam" placeholder="例如：大伯、江家、花" maxlength="10">
+      <label for="fam">清單裡沒有？新增稱呼</label>
+      <input id="fam" maxlength="10">
       <button class="primary wide" onclick="join(document.getElementById('fam').value)">新增</button>
-    </div>`);
+    </div>
+    ${state.family ? `<button class="link" onclick="renameForm()">✏️ 修改稱呼</button>` : ''}`);
 }
 
 const join = family => run(async () => { await call('join', { family }); home(); });
+
+// 只能改自己目前的稱呼（Gemini：入口放選擇頁底部、二次確認）
+function renameForm() {
+  show(`<h1>修改稱呼</h1>
+    <label for="nn">把「${esc(state.family)}」改成</label>
+    <input id="nn" maxlength="10" value="${esc(state.family)}">
+    <button class="primary wide" onclick="rename()">確定修改</button>
+    <button class="wide" onclick="pickFamily()">取消</button>`);
+}
+
+const rename = () => {
+  const name = document.getElementById('nn').value.trim();
+  if (!name) return alert('請輸入稱呼');
+  if (confirm(`確定將「${state.family}」改為「${name}」？`)) run(async () => { await call('rename', { family: name }); home(); });
+};
 
 const link = e => `https://liff.line.me/${LIFF_ID}?g=${g}` + (e ? `&e=${e}` : '');
 
@@ -168,8 +184,8 @@ const signup = (i, n) => run(async () => {
   const ev = state.events[i], { id, title } = ev;
   await call('signup', { eventId: id, count: n });
   const total = state.events.find(e => e.id === id).total;
-  await notify([signupFlex(ev, n ? `🏠${state.family} 報名 ${n} 位 ✅` : `🏠${state.family} 不克參加`, `目前共 ${total} 位`)]);
-  show(`<p class="big ok">✅ 已送出</p><p class="big">🏠${esc(state.family)}：${n ? `${n} 位` : '不去'}</p>
+  await notify([signupFlex(ev, n ? `「${state.family}」報名 ${n} 位 ✅` : `「${state.family}」不克參加`, `目前共 ${total} 位`)]);
+  show(`<p class="big ok">✅ 已送出</p><p class="big">「${esc(state.family)}」：${n ? `${n} 位` : '不去'}</p>
     <p>「${esc(title)}」目前共 ${total} 位</p>
     <button class="primary wide" onclick="home()">回活動列表</button>
     <button class="wide" onclick="liff.closeWindow()">關閉</button>`);
@@ -195,7 +211,7 @@ function createForm(i) {
     <button class="wide" onclick="${ev ? `detail(${i})` : 'home()'}">取消</button>`);
 }
 
-// 貼上接龍 → 後端解析 → 帶入欄位並列出已接龍的家庭；解析不到就留空讓人手填
+// 貼上接龍 → 後端解析 → 帶入欄位並列出已接龍的稱呼；解析不到就留空讓人手填
 async function parseRelay() {
   const btn = document.getElementById('pb'), found = document.getElementById('found'), list = document.getElementById('list');
   btn.disabled = true; btn.textContent = '解析中…';
@@ -207,7 +223,7 @@ async function parseRelay() {
     const added = entries.filter(e => !state.families.includes(e.family)).map(e => esc(e.family));
     list.innerHTML = entries.length ? `<p><b>已帶入名單（共 ${entries.reduce((n, e) => n + e.count, 0)} 人）：</b><br>
       ${entries.map(e => `• ${esc(e.family)}：${e.count ? e.count + ' 人' : '不去'}`).join('　')}</p>
-      ${added.length ? `<p class="warn">⚠️ 將新增家庭：${added.join('、')}（請確認名稱是否正確）</p>` : ''}` : '';
+      ${added.length ? `<p class="warn">⚠️ 將新增稱呼：${added.join('、')}（請確認名稱是否正確）</p>` : ''}` : '';
   } catch (e) {
     found.innerHTML = '<p class="warn">解析失敗，請改用手動填寫。</p>';
   }
