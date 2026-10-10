@@ -25,6 +25,9 @@
   .warn { color: #b45309; font-weight: bold; }
   input, textarea { font: inherit; width: 100%; min-height: 56px; padding: 0 12px; margin: 4px 0 16px; border: 2px solid #bbb; border-radius: 12px; background: #fff; }
   textarea { padding: 8px 12px; }
+  /* iOS（LINE 內建瀏覽器）的日期／時間框有原生外觀與最小寬度，會撐破版面、文字置中 */
+  input[type=date], input[type=time] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; line-height: 52px; }
+  input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 </style>
 </head>
 <body>
