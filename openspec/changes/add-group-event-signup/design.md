@@ -76,6 +76,11 @@ Messaging API 無法設定群組公告；Bot push 計額度（所有用戶共用
 - 入口在選稱呼頁底部次要連結「整理打錯的稱呼」，只列 `unclaimed`（無成員）；`confirm()` 列出會一起取消的報名；空清單顯示「目前沒有打錯或閒置的稱呼喔！」（Gemini）。
 - 後端 `drop` 鎖內再查成員；刪未結束活動的報名、保留已結束的（Codex）。不防接龍再次匯入同名稱呼、不做穩定 ID（已結束報名不再顯示，YAGNI）。
 
+### 16. 讀取效能：只讀顯示文字、單次執行快取
+- 實測：Apps Script 基本 0.6–0.9 秒，每讀一張分頁約 +0.7–1 秒。原本每張讀 getValues＋getDisplayValues 兩次，報名一次共 16 次讀取。
+- `rows()` 只讀 `getDisplayValues()`（日期時間本就由顯示文字還原）；同次執行內快取、回傳副本，`add`/`put`/`del` 寫入時清該表、`doPost` 與 `locked()` 取得鎖後清空。打開網頁 5 次、報名 6 次讀取。
+- 不採：Sheets 進階服務一次批次讀取（需額外啟用設定）、CacheService 跨請求快取（失效複雜）。
+
 ## Risks / Trade-offs
 
 - [Apps Script 對 POST 回 302，LINE 後台的 Verify 按鈕會失敗] → 事件仍會送達並執行；README 註明忽略 Verify 結果，以實際邀 Bot 入群測試。

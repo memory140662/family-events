@@ -5,6 +5,7 @@ const assert = require('assert');
 
 const sheets = {}; // 綁定本程式的那一份試算表（所有群組共用）
 const fetched = [];
+let reads = 0; // 讀試算表次數：每次約 0.5～1 秒，是載入慢的主因
 const fakeSheet = () => {
   const data = [];
   return {
@@ -13,7 +14,7 @@ const fakeSheet = () => {
     getLastRow: () => data.length,
     getDataRange: () => ({
       getValues: () => data.map(r => r.map(x => x && x.disp ? x.v : x)),
-      getDisplayValues: () => data.map(r => r.map(x => x && x.disp ? x.disp : String(x))),
+      getDisplayValues: () => (reads++, data).map(r => r.map(x => x && x.disp ? x.disp : String(x))),
     }),
     getRange: row => ({ setNumberFormat() { return this; }, setValues: ([v]) => { data[row - 1] = v; } }),
     deleteRow: row => data.splice(row - 1, 1),
@@ -226,5 +227,11 @@ assert.ok(!s.families.includes('阿姨'));
 assert.deepEqual(s.events.find(e => e.id === winter).replies, [{ family: '花', count: 1 }], '刪掉的稱呼不再計入人數');
 assert.deepEqual(s.events.find(e => e.id === newYear).replies, [], '多筆報名都要刪到，不能刪錯列');
 assert.ok(sheets.signups.getDataRange().getValues().some(r => r[1] === '阿姨'), '已結束活動的報名保留');
+
+// 效能：每張分頁一次請求只讀一次
+reads = 0; call('u1', 'load');
+assert.equal(reads, 5, '打開網頁只讀 groups、families、members、events、signups 各一次');
+reads = 0; call('u1', 'signup', { eventId: winter, count: 2 });
+assert.equal(reads, 6, '報名：groups＋鎖內 members、events、signups＋寫入後只重讀 families 與被改的 signups');
 
 console.log('全部通過 ✅');
