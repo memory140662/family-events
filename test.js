@@ -3,30 +3,27 @@ const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
 
-const books = { main: {}, S1: {}, S2: {} }; // main＝主試算表；S1、S2＝已共用給部署帳號的用戶試算表
+const sheets = {}; // 綁定本程式的那一份試算表（所有群組共用）
 const fetched = [];
 const fakeSheet = () => {
   const data = [];
   return {
+    // 格子可放 { v, disp } 模擬「被試算表轉成日期」：getValues 拿到日期物件 v，畫面上顯示 disp
     appendRow: r => data.push(r),
-    getDataRange: () => ({ getValues: () => data }),
-    getRange: row => ({ setNumberFormat() {}, setValues: ([v]) => { data[row - 1] = v; } }),
-    getParent: () => ({ getSpreadsheetTimeZone: () => 'Asia/Taipei' }),
+    getLastRow: () => data.length,
+    getDataRange: () => ({
+      getValues: () => data.map(r => r.map(x => x && x.disp ? x.v : x)),
+      getDisplayValues: () => data.map(r => r.map(x => x && x.disp ? x.disp : String(x))),
+    }),
+    getRange: row => ({ setNumberFormat() { return this; }, setValues: ([v]) => { data[row - 1] = v; } }),
   };
 };
-const book = id => ({ getSheetByName: n => books[id][n], insertSheet: n => (books[id][n] = fakeSheet()) });
 let uuid = 0;
 const ctx = {
-  SpreadsheetApp: {
-    getActive: () => book('main'),
-    openById: id => { if (!books[id]) throw new Error('沒有權限'); return book(id); },
-  },
-  Session: { getEffectiveUser: () => ({ getEmail: () => 'bot@gmail.com' }) },
+  SpreadsheetApp: { getActive: () => ({ getSheetByName: n => sheets[n], insertSheet: n => (sheets[n] = fakeSheet()) }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ HOOK_KEY: 'k', LIFF_ID: 'L', CHANNEL_TOKEN: 't' })[k] }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-  Utilities: { // 「現在」固定為 2026-11-01；其他日期照實格式化（假環境忽略時區，測試資料用 UTC）
-    formatDate: (d, tz, f) => f === 'HH:mm' ? d.toISOString().slice(11, 16)
-      : Math.abs(d - Date.now()) < 60000 ? '2026-11-01' : d.toISOString().slice(0, 10), getUuid: () => 'ev' + ++uuid + '-xxxxxxx' },
+  Utilities: { formatDate: () => '2026-11-01', getUuid: () => 'ev' + ++uuid + '-xxxxxxx' }, // 「今天」固定為 2026-11-01
   UrlFetchApp: { fetch: (url, opt) => { fetched.push({ url, opt }); return { getContentText: () => '{"groupName":"江家群組"}' }; } },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ s, setMimeType() { return this; } }) },
 };
@@ -42,39 +39,26 @@ const lastReply = () => JSON.parse(fetched.at(-1).opt.payload).messages[0].text;
 const dm = userId => ({ type: 'user', userId });
 const inGroup = (g, userId) => ({ type: 'group', groupId: g, userId });
 
-// 私訊設定試算表：沒共用的打不開，要告訴使用者該共用給哪個帳號
-say('設定試算表 https://docs.google.com/spreadsheets/d/NOPE/edit', dm('u1'));
-assert.match(lastReply(), /打不開.*bot@gmail\.com/);
-say('設定試算表 https://docs.google.com/spreadsheets/d/S1/edit#gid=0', dm('u1'));
-assert.match(lastReply(), /設定完成/);
-assert.ok(books.S1.signups, '設定時就在用戶試算表建好分頁（等於驗證可寫入）');
+// 私訊只回使用說明，不再要求共用試算表（也就不會曝露部署者的 Gmail）
 say('你好', dm('u1'));
-assert.match(lastReply(), /設定試算表/, '其他私訊回使用說明');
+assert.match(lastReply(), /邀進家族群組/);
+assert.doesNotMatch(lastReply(), /@/);
 
-// 加入群組只提示綁定，此時連結還不能用
+// 密鑰不對的 webhook 不能登記群組（防止有人偽造 LINE 事件）
+hook([{ type: 'join', source: inGroup('G1'), replyToken: 'r' }], 'wrong');
+assert.equal(call('u1', 'load').code, 'unbound', '未登記的群組連結無效，且前端能辨識原因');
+
+// Bot 被邀進群組 → 自動登記並回覆帶群組 ID 的連結，不用任何設定
 hook([{ type: 'join', source: inGroup('G1'), replyToken: 'r' }]);
-assert.match(lastReply(), /綁定/);
-assert.equal(call('u1', 'load').code, 'unbound', '未綁定的群組連結無效，且前端能辨識原因');
-
-// 密鑰不對的 webhook 不能綁定（防止有人偽造 LINE 事件）
-hook([{ type: 'message', source: inGroup('G1', 'u1'), replyToken: 'r', message: { type: 'text', text: '綁定' } }], 'wrong');
-assert.ok(call('u1', 'load').error);
-
-// 沒設定試算表的人綁定 → 提示先私訊設定，群組仍未綁定
-say('綁定', inGroup('G1', 'u7'));
-assert.match(lastReply(), /私訊/);
-assert.ok(call('u1', 'load').error);
-
-// 已設定的人綁定 → 回覆帶群組 ID 的連結
-say('綁定', inGroup('G1', 'u1'));
 assert.match(lastReply(), /liff\.line\.me\/L\?g=G1/);
 assert.equal(call('u1', 'load').groupName, '江家群組');
 
-// 已綁定的群組，別人再打「綁定」也不能把資料導到自己的試算表
-say('設定試算表 S2', dm('u8'));
-say('綁定', inGroup('G1', 'u8'));
-assert.match(lastReply(), /g=G1/);
-assert.deepEqual(books.main.groups.getDataRange().getValues().filter(r => r[0] === 'G1').map(r => r[2]), ['S1']);
+// 舊版流程中加入、但沒打「綁定」的群組：打「報名」就補登記，不會卡住
+say('報名', inGroup('G0', 'u1'));
+assert.match(lastReply(), /g=G0/);
+assert.ok(!call('u1', 'load', {}, 'G0').error);
+say('報名', inGroup('G0', 'u1'));
+assert.equal(sheets.groups.getDataRange().getValues().filter(r => r[0] === 'G0').length, 1, '重複打「報名」不會重複登記');
 
 // 一般聊天不回應（不洗版、不碰聊天內容），只有「報名」才回連結
 const before = fetched.length;
@@ -125,29 +109,21 @@ assert.ok(edit('u1', { date: '2027-02-31' }).error, '不存在的日期不能存
 assert.ok(edit('u1', { time: '25:99' }).error, '時間只能空白或 HH:mm');
 ev = edit('u1', { time: '12:00' }).events.find(e => e.id === party);
 assert.deepEqual([ev.time, ev.total, ev.replies.length], ['12:00', 3, 3]);
-assert.equal(books.S1.events.getDataRange().getValues().filter(r => r[0] === party)[0][6], 'u1', '編輯後建立者不變');
+assert.equal(sheets.events.getDataRange().getValues().filter(r => r[0] === party)[0][6], 'u1', '編輯後建立者不變');
 
 // 人數超出範圍、別的群組的活動、別的群組的連結都要擋下
 assert.ok(call('u1', 'signup', { eventId: party, count: 9 }).error);
-say('綁定', inGroup('G2', 'u8')); // u8 的試算表是 S2
+hook([{ type: 'join', source: inGroup('G2'), replyToken: 'r' }]);
 call('u9', 'join', { family: '陳' }, 'G2');
 assert.ok(call('u9', 'signup', { eventId: party, count: 2 }, 'G2').error, '不能報名別的群組的活動');
 assert.equal(call('u9', 'load', {}, 'G2').events.length, 0, '看不到別的群組的活動');
 assert.ok(call('u1', 'load', {}, 'GX').error, '未登記的群組連結無效');
 
 
-// 資料存在綁定時的用戶試算表：G1 → S1、G2 → S2，主試算表只有對照表
-assert.ok(books.S1.events.getDataRange().getValues().some(r => r[1] === 'G1'));
-assert.ok(books.S2.families.getDataRange().getValues().some(r => r[1] === '陳'));
-assert.ok(!books.S1.families.getDataRange().getValues().some(r => r[1] === '陳'), 'G2 的資料不能寫進 S1');
-assert.deepEqual(Object.keys(books.main).sort(), ['groups', 'users']);
-
-// 用戶改設定別的試算表，已綁定的群組照舊用原本那份，資料不會「消失」
-say('設定試算表 S2', dm('u1'));
-assert.equal(call('u1', 'load').events.length, 2);
-
-// 試算表會把「2026-11-20」「18:00」自動轉成日期／時間（家人手動改試算表時也一定會），讀回來要還原成字串，網頁才不會顯示 NaN
-books.S1.events.appendRow(['evD', 'G1', '手改的聚餐', new Date(Date.UTC(2026, 10, 20)), new Date(Date.UTC(1899, 11, 30, 18)), '', 'u1', '']);
+// 試算表會把「2026-11-20」「18:00」自動轉成日期／時間（家人手動改試算表時也一定會）。
+// 日期物件換算時區曾讓「週六 11:30」變成「週五 03:30」，所以要以試算表畫面上顯示的文字為準（日期物件故意給錯的時區）
+sheets.events.appendRow(['evD', 'G1', '手改的聚餐', { v: new Date(Date.UTC(2026, 10, 19, 16)), disp: '2026/11/20' },
+  { v: new Date(Date.UTC(1899, 11, 30, 10)), disp: '下午 6:00:00' }, '', 'u1', '']);
 ev = call('u1', 'load').events.find(e => e.id === 'evD');
 assert.deepEqual([ev.date, ev.time], ['2026-11-20', '18:00']);
 
@@ -160,9 +136,9 @@ assert.deepEqual(call('u1', 'parse', { text: chain + '華*3+1\n' }).entries.at(-
 // 接龍沒寫年份：已過的月日要算明年，不然活動一建立就「過期」看不到
 assert.equal(call('u1', 'parse', { text: '春酒\n1/5 18:00\n林*2' }).date, '2027-01-05');
 // 不是接龍的文字：什麼都不帶入，也不寫入任何資料
-const n = books.S1.events.getDataRange().getValues().length;
+const n = sheets.events.getDataRange().getValues().length;
 assert.deepEqual(call('u1', 'parse', { text: '晚餐吃什麼' }), { title: '晚餐吃什麼', date: '', time: '', place: '', entries: [] });
-assert.equal(books.S1.events.getDataRange().getValues().length, n, 'parse 只解析不寫入');
+assert.equal(sheets.events.getDataRange().getValues().length, n, 'parse 只解析不寫入');
 
 // 確認後建立：接龍的報名一併寫入，沒見過的家庭一併建立
 s = call('u3', 'create', { title: '尾牙', date: '2026-12-20', entries: [{ family: '花', count: 1 }, { family: '阿姨', count: 2 }, { family: '壞', count: 99 }] });
