@@ -14,12 +14,13 @@
 
 - [ ] 3.1 撰寫 README.md：LINE 官方帳號／Messaging API／LIFF 設定、Apps Script 部署與 Script Properties、GitHub Pages、邀 Bot 入群；依文件從頭操作一次驗證
 
-## 4. 多用戶試算表
+## 4. 多個家族群組
 
 - [ ] 4.0 驗證 Apps Script `HtmlService` 提供 LIFF 頁面是否可行（init、getProfile、群組 sendMessages），依結果決定前端託管並更新 design
-- [x] 4.1 主試算表／用戶試算表路由（依 groupId 開對應試算表），以 `node test.js` 驗證兩群組資料分存不同試算表
-- [x] 4.2 私訊「設定試算表」：解析網址、驗證寫入、成功／失敗／說明回覆，以 `node test.js` 驗證
-- [x] 4.3 join 回覆綁定提示；群組「綁定」：成功、未設定、已綁定不變更，以 `node test.js` 驗證
+- [x] 4.1 （已由 4.9 取代）主試算表／用戶試算表路由（依 groupId 開對應試算表），以 `node test.js` 驗證兩群組資料分存不同試算表
+- [x] 4.2 （已由 4.9 取代）私訊「設定試算表」：解析網址、驗證寫入、成功／失敗／說明回覆，以 `node test.js` 驗證
+- [x] 4.3 （已由 4.9 取代）join 回覆綁定提示；群組「綁定」：成功、未設定、已綁定不變更，以 `node test.js` 驗證
+- [x] 4.9 改回單一試算表（取代 4.1–4.3）：join 自動登記、「報名」補登記、私訊不曝露帳號；日期時間以顯示文字還原（修正差 8 小時），以 `node test.js` 驗證
 - [x] 4.5 接龍匯入：`parseChain` 與 `parse` API、`create` 帶 entries，以 `node test.js` 驗證範例與解析失敗
 - [x] 4.6 新增活動頁「貼上接龍」區塊（依 Gemini 設計），以手機寬度截圖驗證
 - [ ] 4.7 建立活動後以 Flex 卡片通知群組（依 Gemini 設計），失敗不影響建立；於 LINE 群組實測驗證

@@ -1,11 +1,8 @@
-// 家族活動報名：LINE webhook + LIFF 前端 API。
-// 主試算表（綁定本程式）只存 users、groups 對照；家庭、活動、報名存在各用戶自己的試算表。
+// 家族活動報名：LINE webhook + LIFF 前端 API，所有群組的資料都存在綁定本程式的試算表（以 groupId 區分）。
 // 設定放在 Apps Script「專案設定 → 指令碼屬性」：CHANNEL_TOKEN、LIFF_ID、HOOK_KEY
 
-const MAIN_TABLES = ['users', 'groups'];
 const TABLES = {
-  users: ['userId', 'sheetId', 'updatedAt'],
-  groups: ['groupId', 'name', 'sheetId', 'joinedAt'],
+  groups: ['groupId', 'name', 'sheetId', 'joinedAt'], // sheetId：舊版「各用戶試算表」留下的欄位，已不使用，保留以相容既有試算表
   families: ['groupId', 'name'],
   members: ['groupId', 'userId', 'family'],
   events: ['id', 'groupId', 'title', 'date', 'time', 'place', 'createdBy', 'createdAt'],
@@ -23,50 +20,23 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(res)).setMimeType(ContentService.MimeType.JSON);
 }
 
-// ---- LINE Bot：私訊「設定試算表」；群組只處理加入、「綁定」、「報名」，其他訊息一律忽略、不儲存 ----
-
-const HELP = '我是活動報名小幫手 🎉\n① 建一個 Google 試算表，共用給 %s（編輯者）\n' +
-  '② 在這裡傳：設定試算表 <試算表網址>\n③ 把我邀進家族群組，在群組輸入「綁定」';
+// ---- LINE Bot：被邀進群組就自動登記並回覆連結；群組只回應「報名」，其他訊息一律忽略、不儲存 ----
 
 function onLineEvent(ev) {
   const src = ev.source || {};
   const text = ev.type === 'message' && ev.message.type === 'text' ? ev.message.text.trim() : null;
-  if (src.type === 'user') {
-    if (text === null) return;
-    const m = text.match(/^設定試算表\s*(\S+)/);
-    return reply(ev.replyToken, m ? setSheet(src.userId, m[1]) : HELP.replace('%s', shareTo()));
+  if (src.type === 'user') { // 私訊：只回使用說明
+    if (text !== null) reply(ev.replyToken, '我是活動報名小幫手 🎉\n把我邀進家族群組，我就會回覆報名連結。');
+    return;
   }
   const g = src.groupId;
-  if (!g) return;
-  const group = rows('groups').find(r => r.groupId === g);
-  if (ev.type === 'join') {
-    reply(ev.replyToken, '大家好！我是活動報名小幫手 🎉\n請已設定試算表的人在群組輸入「綁定」，就能開始使用。\n' +
-      '還沒設定？加我好友後私訊我，我會教你。');
-  } else if (text === '綁定' || text === '報名') {
-    if (group) return reply(ev.replyToken, '活動報名請點：\n' + link(g));
-    if (text === '報名') return reply(ev.replyToken, '這個群組還沒綁定，請已設定試算表的人輸入「綁定」。');
-    const user = rows('users').find(r => r.userId === src.userId);
-    if (!user) return reply(ev.replyToken, '找不到你的試算表。請先加我好友，私訊「設定試算表 <試算表網址>」，再回來輸入「綁定」。');
-    add('groups', { groupId: g, name: groupName(g), sheetId: user.sheetId, joinedAt: new Date().toISOString() });
-    reply(ev.replyToken, '✅ 綁定完成！報名、看名單、新增活動都點這裡：\n' + link(g) +
-      '\n\n💡 建議把這則訊息設為公告。忘記連結時，在群組輸入「報名」即可。');
-  }
+  // 「綁定」：舊版流程的指令，舊群組可能還沒登記，照樣接受
+  if (!g || !(ev.type === 'join' || text === '報名' || text === '綁定')) return;
+  if (!rows('groups').some(r => r.groupId === g)) add('groups', { groupId: g, name: groupName(g), joinedAt: new Date().toISOString() });
+  reply(ev.replyToken, ev.type === 'join'
+    ? '大家好！我是活動報名小幫手 🎉\n報名、看名單、新增活動都點這裡：\n' + link(g) + '\n\n💡 建議把這則訊息設為公告。忘記連結時，在群組輸入「報名」即可。'
+    : '活動報名請點：\n' + link(g));
 }
-
-// 驗證能寫入（順便建好分頁）才記錄；已綁定的群組各自存了 sheetId，不受影響
-function setSheet(userId, url) {
-  const id = (url.match(/\/d\/([\w-]+)/) || [, url])[1];
-  try {
-    const ss = SpreadsheetApp.openById(id);
-    Object.keys(TABLES).filter(n => !MAIN_TABLES.includes(n)).forEach(n => table(n, ss));
-  } catch (e) {
-    return '❌ 打不開這份試算表。請確認網址正確，並已共用給 ' + shareTo() + '（編輯者）。';
-  }
-  upsert('users', ['userId'], { userId: userId, sheetId: id, updatedAt: new Date().toISOString() });
-  return '✅ 試算表設定完成！把我邀進家族群組，在群組輸入「綁定」即可。';
-}
-
-function shareTo() { return Session.getEffectiveUser().getEmail(); }
 
 function link(g) { return 'https://liff.line.me/' + prop('LIFF_ID') + '?g=' + g; }
 
@@ -86,8 +56,7 @@ function groupName(g) {
 
 function api(b) {
   const group = rows('groups').find(r => r.groupId === b.g);
-  if (!group) throw Object.assign(new Error('這個群組還沒綁定'), { code: 'unbound' }); // 前端依 code 顯示專用說明
-  userSheet = SpreadsheetApp.openById(group.sheetId);
+  if (!group) throw Object.assign(new Error('這個群組還沒登記'), { code: 'unbound' }); // 前端依 code 顯示專用說明
   if (!b.userId) throw new Error('無法取得 LINE 身分，請從 LINE 裡打開');
   const today = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
   if (b.action === 'parse') return parseChain(b.text, today); // 只解析、不寫入，讓發起人先確認
@@ -195,9 +164,8 @@ function summarize(events, signups, families, today, userId) {
 
 // ---- 試算表：每個分頁一張表，第一列是欄位名，首次使用自動建立 ----
 
-let userSheet; // 本次請求所屬群組的用戶試算表；每次請求都是獨立執行，不會互相干擾
-
-function table(name, ss = MAIN_TABLES.includes(name) ? SpreadsheetApp.getActive() : userSheet) {
+function table(name) {
+  const ss = SpreadsheetApp.getActive();
   let sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
@@ -208,28 +176,42 @@ function table(name, ss = MAIN_TABLES.includes(name) ? SpreadsheetApp.getActive(
 }
 
 function rows(name) {
-  const sh = table(name);
-  const tz = sh.getParent().getSpreadsheetTimeZone();
-  const [head, ...data] = sh.getDataRange().getValues();
+  const range = table(name).getDataRange();
+  const [head, ...data] = range.getValues(), shown = range.getDisplayValues().slice(1);
   return data.map((r, i) => {
     const o = { _row: i + 2 };
-    head.forEach((h, j) => { o[h] = cell(r[j], h, tz); });
+    head.forEach((h, j) => { o[h] = cell(r[j], shown[i][j], h); });
     return o;
   });
 }
 
-// 試算表會把「2026-11-14」「11:30」自動轉成日期（手動編輯時一定會），讀回來還原成程式用的字串格式
-function cell(v, h, tz) {
+// 試算表會把「2026-11-14」「11:30」自動轉成日期（手動編輯時一定會）。日期物件換算時區曾差 8 小時，
+// 所以改讀畫面上顯示的文字（如「2026/11/14」「下午 1:30:00」），畫面上看到幾點就是幾點
+function cell(v, shown, h) {
   if (Object.prototype.toString.call(v) !== '[object Date]') return String(v);
-  return Utilities.formatDate(v, tz, h === 'time' ? 'HH:mm' : 'yyyy-MM-dd');
+  const pad = n => String(n).padStart(2, '0');
+  if (h === 'time') {
+    const m = shown.match(/(\d{1,2}):(\d{2})/);
+    if (!m) return shown;
+    let hh = Number(m[1]);
+    if (/下午|PM/i.test(shown) && hh < 12) hh += 12;
+    if (/上午|AM/i.test(shown) && hh === 12) hh = 0;
+    return pad(hh) + ':' + m[2];
+  }
+  const d = shown.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  return d ? d[1] + '-' + pad(d[2]) + '-' + pad(d[3]) : shown;
 }
 
-function add(name, obj) { table(name).appendRow(TABLES[name].map(h => String(obj[h] ?? ''))); }
+// 寫入前先把那一列設成純文字，避免試算表把日期、時間自動轉型
+function add(name, obj) {
+  const sh = table(name), n = TABLES[name].length;
+  sh.getRange(sh.getLastRow() + 1, 1, 1, n).setNumberFormat('@').setValues([TABLES[name].map(h => String(obj[h] ?? ''))]);
+}
 
 function upsert(name, keys, obj) {
   const hit = rows(name).find(r => keys.every(k => r[k] === String(obj[k])));
   if (!hit) return add(name, obj);
-  table(name).getRange(hit._row, 1, 1, TABLES[name].length).setValues([TABLES[name].map(h => String(obj[h] ?? ''))]);
+  table(name).getRange(hit._row, 1, 1, TABLES[name].length).setNumberFormat('@').setValues([TABLES[name].map(h => String(obj[h] ?? ''))]);
 }
 
 function prop(k) { return PropertiesService.getScriptProperties().getProperty(k); }
