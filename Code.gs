@@ -115,6 +115,11 @@ function api(b) {
   if (!b.userId) throw new Error('無法取得 LINE 身分，請從 LINE 裡打開');
   const now = Utilities.formatDate(new Date(), 'Asia/Taipei', "yyyy-MM-dd'T'HH:mm"), today = now.slice(0, 10);
   if (b.action === 'parse') return parseChain(b.text, today); // 只解析、不寫入，讓發起人先確認
+  if (b.action === 'syncName') { // 前端畫面出來後在背景呼叫，不拖慢載入；LINE 改群組名稱不會通知 Bot，只能自己查
+    const name = groupName(b.g);
+    if (name && name !== group.name) locked(() => put('groups', group._row, Object.assign(group, { name: name })));
+    return { groupName: group.name };
+  }
   let created; // 新活動的 id，讓前端的卡片連結能直接開到這一場
   if (b.action !== 'load') created = locked(() => write(b));
   const families = rows('families').filter(r => r.groupId === b.g).map(r => r.name);
