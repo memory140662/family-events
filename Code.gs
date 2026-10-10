@@ -10,6 +10,7 @@ const TABLES = {
 };
 
 function doPost(e) {
+  cache = {};
   const body = JSON.parse(e.postData.contents);
   if (body.events) { // LINE webhook（Apps Script 讀不到 header，改用網址上的密鑰驗證）
     if (e.parameter.hook === prop('HOOK_KEY')) body.events.forEach(onLineEvent);
@@ -94,6 +95,7 @@ function reply(token, msg) { lineApi('message/reply', { replyToken: token, messa
 function locked(fn) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
+  cache = {}; // 等鎖期間別人可能寫入過，鎖內重新讀
   try { return fn(); } finally { lock.releaseLock(); }
 }
 
@@ -146,9 +148,8 @@ function write(b) {
     if (!hit) throw new Error('找不到「' + name + '」');
     if (rows('members').some(r => r.groupId === b.g && r.family === name)) throw new Error('「' + name + '」有人在用，不能刪除');
     const open = rows('events').filter(r => r.groupId === b.g && !ended(r, taipei)).map(r => r.id); // 已結束的報名留作紀錄
-    const sh = table('signups');
-    rows('signups').filter(r => open.includes(r.eventId) && r.family === name).reverse().forEach(r => sh.deleteRow(r._row)); // 由下往上刪，列號才不會位移
-    table('families').deleteRow(hit._row);
+    rows('signups').filter(r => open.includes(r.eventId) && r.family === name).reverse().forEach(r => del('signups', r._row)); // 由下往上刪，列號才不會位移
+    del('families', hit._row);
   } else if (b.action === 'create') {
     const id = Utilities.getUuid().slice(0, 8);
     add('events', Object.assign(eventFields(b), { id: id, groupId: b.g, createdBy: b.userId, createdAt: now }));
@@ -198,7 +199,7 @@ function dropIfEmpty(g, name) {
   if (rows('members').some(r => r.groupId === g && r.family === name)) return;
   if (rows('signups').some(r => ids.includes(r.eventId) && r.family === name)) return;
   const hit = rows('families').find(r => r.groupId === g && r.name === name);
-  if (hit) table('families').deleteRow(hit._row);
+  if (hit) del('families', hit._row);
 }
 
 function addFamily(g, name) {
@@ -263,20 +264,24 @@ function table(name) {
   return sh;
 }
 
+// 每張分頁一次執行只讀一次（每次讀試算表約 0.5～1 秒）；寫入後清掉該表快取。回傳副本，呼叫端改了也不影響快取
+let cache = {};
 function rows(name) {
-  const range = table(name).getDataRange();
-  const [head, ...data] = range.getValues(), shown = range.getDisplayValues().slice(1);
-  return data.map((r, i) => {
-    const o = { _row: i + 2 };
-    head.forEach((h, j) => { o[h] = cell(r[j], shown[i][j], h); });
-    return o;
-  });
+  if (!cache[name]) {
+    const [head, ...data] = table(name).getDataRange().getDisplayValues();
+    cache[name] = data.map((r, i) => {
+      const o = { _row: i + 2 };
+      head.forEach((h, j) => { o[h] = cell(r[j], h); });
+      return o;
+    });
+  }
+  return cache[name].map(o => Object.assign({}, o));
 }
 
 // 試算表會把「2026-11-14」「11:30」自動轉成日期（手動編輯時一定會）。日期物件換算時區曾差 8 小時，
-// 所以改讀畫面上顯示的文字（如「2026/11/14」「下午 1:30:00」），畫面上看到幾點就是幾點
-function cell(v, shown, h) {
-  if (Object.prototype.toString.call(v) !== '[object Date]') return String(v);
+// 所以一律讀畫面上顯示的文字（如「2026/11/14」「下午 1:30:00」），畫面上看到幾點就是幾點
+function cell(shown, h) {
+  if (h !== 'date' && h !== 'time') return shown;
   const pad = n => String(n).padStart(2, '0');
   if (h === 'time') {
     const m = shown.match(/(\d{1,2}):(\d{2})/);
@@ -292,6 +297,7 @@ function cell(v, shown, h) {
 
 // 寫入前先把那一列設成純文字，避免試算表把日期、時間自動轉型
 function add(name, obj) {
+  delete cache[name];
   const sh = table(name), n = TABLES[name].length;
   sh.getRange(sh.getLastRow() + 1, 1, 1, n).setNumberFormat('@').setValues([TABLES[name].map(h => String(obj[h] ?? ''))]);
 }
@@ -303,7 +309,10 @@ function upsert(name, keys, obj) {
 
 function updateWhere(name, match, patch) { rows(name).filter(match).forEach(r => put(name, r._row, Object.assign(r, patch))); }
 
+function del(name, row) { table(name).deleteRow(row); delete cache[name]; }
+
 function put(name, row, obj) {
+  delete cache[name];
   table(name).getRange(row, 1, 1, TABLES[name].length).setNumberFormat('@').setValues([TABLES[name].map(h => String(obj[h] ?? ''))]);
 }
 
