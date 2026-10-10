@@ -11,6 +11,7 @@ const fakeSheet = () => {
     appendRow: r => data.push(r),
     getDataRange: () => ({ getValues: () => data }),
     getRange: row => ({ setNumberFormat() {}, setValues: ([v]) => { data[row - 1] = v; } }),
+    getParent: () => ({ getSpreadsheetTimeZone: () => 'Asia/Taipei' }),
   };
 };
 const book = id => ({ getSheetByName: n => books[id][n], insertSheet: n => (books[id][n] = fakeSheet()) });
@@ -23,7 +24,9 @@ const ctx = {
   Session: { getEffectiveUser: () => ({ getEmail: () => 'bot@gmail.com' }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => ({ HOOK_KEY: 'k', LIFF_ID: 'L', CHANNEL_TOKEN: 't' })[k] }) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-  Utilities: { formatDate: () => '2026-11-01', getUuid: () => 'ev' + ++uuid + '-xxxxxxx' },
+  Utilities: { // 「現在」固定為 2026-11-01；其他日期照實格式化（假環境忽略時區，測試資料用 UTC）
+    formatDate: (d, tz, f) => f === 'HH:mm' ? d.toISOString().slice(11, 16)
+      : Math.abs(d - Date.now()) < 60000 ? '2026-11-01' : d.toISOString().slice(0, 10), getUuid: () => 'ev' + ++uuid + '-xxxxxxx' },
   UrlFetchApp: { fetch: (url, opt) => { fetched.push({ url, opt }); return { getContentText: () => '{"groupName":"江家群組"}' }; } },
   ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ s, setMimeType() { return this; } }) },
 };
@@ -131,6 +134,11 @@ assert.deepEqual(Object.keys(books.main).sort(), ['groups', 'users']);
 say('設定試算表 S2', dm('u1'));
 assert.equal(call('u1', 'load').events.length, 2);
 
+// 試算表會把「2026-11-20」「18:00」自動轉成日期／時間（家人手動改試算表時也一定會），讀回來要還原成字串，網頁才不會顯示 NaN
+books.S1.events.appendRow(['evD', 'G1', '手改的聚餐', new Date(Date.UTC(2026, 10, 20)), new Date(Date.UTC(1899, 11, 30, 18)), '', 'u1', '']);
+ev = call('u1', 'load').events.find(e => e.id === 'evD');
+assert.deepEqual([ev.date, ev.time], ['2026-11-20', '18:00']);
+
 // 接龍匯入：用家人真正的寫法（spec 範例）解析出活動與已接龍的家庭
 const chain = '11月慶生餐會邀約\n日時：\n11/14（六）11:30\n場所：龍潭-蔣府宴\n出席請接龍：\n花*1\n江*3 \n';
 assert.deepEqual(call('u1', 'parse', { text: chain }), { title: '11月慶生餐會', date: '2026-11-14', time: '11:30',
@@ -146,7 +154,8 @@ assert.equal(books.S1.events.getDataRange().getValues().length, n, 'parse 只解
 
 // 確認後建立：接龍的報名一併寫入，沒見過的家庭一併建立
 s = call('u3', 'create', { title: '尾牙', date: '2026-12-20', entries: [{ family: '花', count: 1 }, { family: '阿姨', count: 2 }, { family: '壞', count: 99 }] });
-ev = s.events.find(e => e.title === '尾牙');
+ev = s.events.find(e => e.id === s.created); // 回傳新活動 id，卡片連結才能直接開到這一場
+assert.equal(ev.title, '尾牙');
 assert.equal(ev.total, 3);
 assert.ok(s.families.includes('阿姨') && !s.families.includes('壞'), '人數不合理的行不匯入');
 
