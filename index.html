@@ -86,7 +86,7 @@ function home() {
   show(`<h1>${esc(state.groupName || '家族活動')}</h1>
     ${state.events.length ? state.events.map(eventCard).join('') : '<p class="card">目前沒有活動</p>'}
     <button class="primary wide" onclick="createForm()">＋ 新增活動</button>
-    <p class="muted">您是「${esc(state.family)}家」 <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
+    <p class="muted">您是 🏠${esc(state.family)} <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
 }
 
 // 列表只放摘要（Gemini 設計）：整張卡片可點，進詳細頁看名單與報名
@@ -116,7 +116,7 @@ function detail(i) {
     <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
     ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
     ${mineTag(ev)}
-    <p class="big">${esc(state.family)}家要去幾位？</p>
+    <p class="big">🏠${esc(state.family)} 參加人數？</p>
     <div class="grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => pick(n, n)).join('')}</div>
     ${pick(0, '本次不克參加', 'wide')}
     <div class="card" style="margin-top:16px">
@@ -135,8 +135,8 @@ function pickFamily() {
   show(`<h1>請問您是哪一家？</h1>
     <div class="grid">${state.families.map((f, i) => `<button onclick="join(state.families[${i}])">${esc(f)}</button>`).join('')}</div>
     <div class="card" style="margin-top:24px">
-      <label for="fam">清單裡沒有？新增我家</label>
-      <input id="fam" placeholder="例如：江" maxlength="10">
+      <label for="fam">清單裡沒有？新增家庭稱呼</label>
+      <input id="fam" placeholder="例如：大伯、江家、花" maxlength="10">
       <button class="primary wide" onclick="join(document.getElementById('fam').value)">新增</button>
     </div>`);
 }
@@ -156,9 +156,9 @@ const signup = (i, n) => run(async () => {
   const { id, title } = state.events[i];
   await call('signup', { eventId: id, count: n });
   const total = state.events.find(e => e.id === id).total;
-  await notify([signupFlex(n ? `${state.family}家報名「${title}」${n} 位 ✅` : `${state.family}家：「${title}」不克參加`,
+  await notify([signupFlex(n ? `🏠${state.family} 報名「${title}」${n} 位 ✅` : `🏠${state.family}：「${title}」不克參加`,
     `目前共 ${total} 位`, id)]);
-  show(`<p class="big ok">✅ 已送出</p><p class="big">${esc(state.family)}家：${n ? `${n} 位` : '不去'}</p>
+  show(`<p class="big ok">✅ 已送出</p><p class="big">🏠${esc(state.family)}：${n ? `${n} 位` : '不去'}</p>
     <p>「${esc(title)}」目前共 ${total} 位</p>
     <button class="primary wide" onclick="home()">回活動列表</button>
     <button class="wide" onclick="liff.closeWindow()">關閉</button>`);
