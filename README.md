@@ -31,11 +31,11 @@ LINE 群組用的活動報名小幫手：Bot 認群組、LIFF 小網頁報名與
    - Size：**Full**
    - Endpoint URL：第 1 步的 GitHub Pages 網址
    - Scopes：勾 **profile**、**chat_message.write**
-   - shareTargetPicker：**On**（外部瀏覽器報名後讓本人自選群組發通知）
    - Bot link feature（或 Add friend option）：有的話選 Off，沒有就略過
-3. 記下 **LIFF ID**（像 `2001234567-AbCdEfGh`）。
-4. LINE Login channel 右上角狀態從 Developing 改成 **Published**，否則只有你自己能用。
-5. 兩個 channel（LINE Login、Messaging API）的 Basic settings → **Privacy policy URL** 都填 GitHub Pages 網址加上 `privacy.html`，例如 `https://<帳號>.github.io/family-events/privacy.html`。
+3. 同一個 LIFF 分頁點 **shareTargetPicker** → 勾選同意「Agreement Regarding Use of Information」→ **Enable**（外部瀏覽器報名後讓本人自選群組發通知；不開只會顯示提示文字）。
+4. 記下 **LIFF ID**（像 `2001234567-AbCdEfGh`）。
+5. LINE Login channel 右上角狀態從 Developing 改成 **Published**，否則只有你自己能用。
+6. 兩個 channel（LINE Login、Messaging API）的 Basic settings → **Privacy policy URL** 都填 GitHub Pages 網址加上 `privacy.html`，例如 `https://<帳號>.github.io/family-events/privacy.html`。
    隱私權政策寫的聯絡方式是「私訊官方帳號」，所以要到 LINE Official Account Manager → 回應設定 → 開啟**聊天**（Webhook 保持開啟），並定期查看私訊。
 
 ### 4. Google 試算表＋Apps Script
