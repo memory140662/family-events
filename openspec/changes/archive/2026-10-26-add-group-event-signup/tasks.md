@@ -8,23 +8,23 @@
 
 - [x] 2.1 LIFF 初始化、取得 profile、無效連結提示，在瀏覽器以無效 g 開啟驗證顯示錯誤
 - [x] 2.2 家庭選擇／新增、活動清單、報名人數按鈕、新增活動表單，長輩友善（字 ≥20px、按鈕 ≥52px），以手機寬度預覽驗證
-- [ ] 2.3 送出後 `liff.sendMessages()` 通知，失敗不影響報名，於 LINE 群組實測驗證
+- [x] 2.3 送出後 `liff.sendMessages()` 通知，失敗不影響報名，於 LINE 群組實測驗證
 
 ## 3. 部署文件
 
-- [ ] 3.1 撰寫 README.md：LINE 官方帳號／Messaging API／LIFF 設定、Apps Script 部署與 Script Properties、GitHub Pages、邀 Bot 入群；依文件從頭操作一次驗證
+- [x] 3.1 撰寫 README.md：LINE 官方帳號／Messaging API／LIFF 設定、Apps Script 部署與 Script Properties、GitHub Pages、邀 Bot 入群；依文件從頭操作一次驗證
 
 ## 4. 多個家族群組
 
-- [ ] 4.0 驗證 Apps Script `HtmlService` 提供 LIFF 頁面是否可行（init、getProfile、群組 sendMessages），依結果決定前端託管並更新 design
+- [x] 4.0 驗證 Apps Script `HtmlService` 提供 LIFF 頁面是否可行（init、getProfile、群組 sendMessages），依結果決定前端託管並更新 design
 - [x] 4.1 （已由 4.9 取代）主試算表／用戶試算表路由（依 groupId 開對應試算表），以 `node test.js` 驗證兩群組資料分存不同試算表
 - [x] 4.2 （已由 4.9 取代）私訊「設定試算表」：解析網址、驗證寫入、成功／失敗／說明回覆，以 `node test.js` 驗證
 - [x] 4.3 （已由 4.9 取代）join 回覆綁定提示；群組「綁定」：成功、未設定、已綁定不變更，以 `node test.js` 驗證
 - [x] 4.9 改回單一試算表（取代 4.1–4.3）：join 自動登記、「#報名」補登記（關鍵字加 # 前綴、接受全形與空白，避免誤觸）、私訊不曝露帳號；日期時間以顯示文字還原（修正差 8 小時），以 `node test.js` 驗證
 - [x] 4.5 接龍匯入：`parseChain` 與 `parse` API、`create` 帶 entries，以 `node test.js` 驗證範例與解析失敗
 - [x] 4.6 新增活動頁「貼上接龍」區塊（依 Gemini 設計），以手機寬度截圖驗證
-- [ ] 4.7 建立活動後以 Flex 卡片通知群組（依 Gemini 設計），失敗不影響建立；於 LINE 群組實測驗證
-- [ ] 4.8 編輯活動：後端 `edit`（僅建立者、日期 ≥ 今天、報名保留）與 `canEdit`，以 `node test.js` 驗證；前端編輯按鈕、表單、異動卡片，截圖驗證
+- [x] 4.7 建立活動後以 Flex 卡片通知群組（依 Gemini 設計），失敗不影響建立；於 LINE 群組實測驗證
+- [x] 4.8 編輯活動：後端 `edit`（僅建立者、日期 ≥ 今天、報名保留）與 `canEdit`，以 `node test.js` 驗證；前端編輯按鈕、表單、異動卡片，截圖驗證
 - [x] 4.10 群組指令「#新活動」：解析接龍直接建立、回新活動卡片、重複不建、缺日期／缺身分／無內容的回覆，以 `node test.js` 與破壞性測試驗證；待 LINE 實測卡片
 - [x] 4.11 稱呼：改用「稱呼」用詞與「」顯示（拿掉 🏠）；修改自己的稱呼（不可改成既有）、更換後自動移除無成員無報名的稱呼，以 `node test.js`、破壞性測試與截圖驗證
 - [x] 4.12 新增活動頁讓建立人直接選自己的人數（接龍有自己則預選、手動優先），截圖驗證
@@ -37,4 +37,5 @@
 - [x] 4.19 歷史活動：`load` 回 `past`（最近 20 場、新到舊、不列尚未回覆），前端唯讀列表與詳細頁，以 `node test.js`、破壞性測試與截圖驗證
 - [x] 4.20 時間改「時＋分」兩個下拉（分 5 分一格、時顯示「下午 1 點 (13:00)」、「時間未定」停用分；非 5 倍數的舊值保留），以 node 邊界檢查與截圖驗證
 - [x] 4.21 選稱呼頁頁首「〈 不換了，回活動列表」（已選過稱呼才顯示，Gemini 文案），截圖驗證
+- [x] 4.22 報名通知：外部瀏覽器開啟或發送失敗時完成頁顯示原因（不再靜默）、人數沒變不重發，以 `node test.js` 驗證；待 LINE 實機驗證
 - [x] 4.4 README：補實際設定踩到的坑（Webhook 開啟時機、Bot link 選項、Google 未驗證警告、redelivery、新版本部署）、新功能用法、單一試算表隱私提醒；之後再執行 3.1

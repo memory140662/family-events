@@ -233,20 +233,23 @@ const rename = () => {
 
 const link = e => `https://liff.line.me/${LIFF_ID}?g=${g}` + (e ? `&e=${e}` : '');
 
-// 以使用者本人帳號在聊天室發訊息；不是從聊天室打開就略過，失敗也不影響主流程
+// 以使用者本人帳號在聊天室發訊息；不是從聊天室打開就略過，失敗也不影響主流程。回傳沒發出去的原因（成功為空）
 async function notify(messages) {
   try {
-    if (liff.isInClient() && liff.getContext().type !== 'none') await liff.sendMessages(messages);
-  } catch (e) { console.warn('群組通知失敗', e); }
+    if (!liff.isInClient() || liff.getContext().type === 'none') return '請從 LINE 群組裡的連結打開，才會通知群組';
+    await liff.sendMessages(messages);
+  } catch (e) { console.warn('群組通知失敗', e); return e.message || String(e); }
 }
 
 const signup = (i, n) => run(async () => {
   const ev = state.events[i], { id, title } = ev;
+  const same = ev.replies.some(r => r.family === state.family && r.count === n); // 人數沒變就不再發群組訊息
   await call('signup', { eventId: id, count: n });
   const total = state.events.find(e => e.id === id).total;
-  await notify([signupFlex(ev, n ? `「${state.family}」報名 ${n} 位 ✅` : `「${state.family}」不克參加`, `目前共 ${total} 位`)]);
+  const err = same ? '' : await notify([signupFlex(ev, n ? `「${state.family}」報名 ${n} 位 ✅` : `「${state.family}」不克參加`, `目前共 ${total} 位`)]);
   show(`<p class="big ok">✅ 已送出</p><p class="big">「${esc(state.family)}」：${n ? `${n} 位` : '不去'}</p>
     <p>「${esc(title)}」目前共 ${total} 位</p>
+    ${err ? `<p class="warn">⚠️ 報名已存好，但沒有通知到群組：${esc(err)}</p>` : ''}
     <button class="primary wide" onclick="home()">回活動列表</button>
     <button class="wide" onclick="liff.closeWindow()">關閉</button>`);
 });
