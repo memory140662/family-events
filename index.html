@@ -6,10 +6,10 @@
 <title>家族活動報名</title>
 <style>
   * { box-sizing: border-box; }
-  body { font: 20px/1.5 system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 0; padding: 16px; background: #fff8f0; color: #222; }
+  body { font: 20px/1.6 system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 0; padding: 16px; background: #fff8f0; color: #222; }
   h1 { font-size: 26px; margin: 0 0 16px; }
   h2 { font-size: 24px; margin: 0 0 8px; }
-  .card { background: #fff; border-radius: 16px; padding: 16px; margin: 0 0 16px; box-shadow: 0 1px 4px #0002; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 16px; margin: 0 0 16px; box-shadow: 0 1px 4px #0002; }
   button { font: inherit; min-height: 56px; border: 0; border-radius: 12px; padding: 0 16px; background: #e8e8e8; color: #222; }
   .primary { background: #087f3c; color: #fff; font-weight: bold; }
   .wide { display: block; width: 100%; margin-top: 12px; }
@@ -19,15 +19,25 @@
   .big { font-size: 28px; font-weight: bold; }
   .ok { color: #06a648; }
   .link { background: none; color: #333; text-decoration: underline; min-height: 52px; font-weight: bold; }
-  .link.minor { font-size: 16px; color: #666; font-weight: normal; }
-  .mine { background: #e8f5e9; padding: 8px 12px; border-radius: 8px; }
+  .link.minor { font-size: 18px; color: #4b5563; font-weight: normal; }
+  /* 回覆狀態三色（Gemini）：已報名綠、不去灰、尚未回覆橘，對比都在 6:1 以上 */
+  .mine { padding: 8px 12px; border-radius: 8px; }
+  .mine.joined { background: #e8f5e9; color: #065f2d; }
+  .mine.declined { background: #f3f4f6; color: #4b5563; }
+  .mine.pending { background: #fef3c7; color: #92400e; }
+  /* 待選按鈕白底綠框（灰底長輩會以為不能按）；選中實心綠 */
+  .grid button, .btn-decline { background: #fff; color: #087f3c; border: 2px solid #087f3c; }
+  .grid button.primary { background: #087f3c; color: #fff; font-weight: bold; }
+  .back { background: #fff; color: #087f3c; border: 2px solid #087f3c; border-radius: 999px; min-height: 48px; padding: 0 16px; font-weight: bold; margin-bottom: 12px; }
+  details.relay { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px 16px; margin-bottom: 16px; }
+  details.relay summary { color: #087f3c; font-weight: bold; padding: 8px 0; cursor: pointer; }
   .wait { font-size: 24px; text-align: center; margin-top: 30vh; }
   label { display: block; font-weight: bold; }
   .warn { color: #b45309; font-weight: bold; }
   input, textarea { font: inherit; width: 100%; min-height: 56px; padding: 0 12px; margin: 4px 0 16px; border: 2px solid #bbb; border-radius: 12px; background: #fff; }
   textarea { padding: 8px 12px; }
-  /* 新增活動頁：選中「不克參加」改白底綠框，讓「建立活動」維持唯一實心綠，長輩不會混淆（Gemini） */
-  .btn-decline.primary { background: #fff; color: #087f3c; border: 3px solid #087f3c; }
+  /* 選中「不克參加」改深灰實心：未選已是白底綠框，也不跟「建立活動」的實心綠混淆（Gemini） */
+  .btn-decline.primary { background: #4b5563; color: #fff; border-color: #4b5563; font-weight: bold; }
   /* 活動列表卡片（Gemini 設計）：標題 → 時間 → 地點 → 共幾人／您的狀態 */
   .card.ev { padding: 12px 16px; margin-bottom: 12px; cursor: pointer; }
   .ev-head { display: flex; justify-content: space-between; align-items: baseline; }
@@ -112,7 +122,7 @@ function home() {
   show(`<h1>${esc(state.groupName || '家族活動')}</h1>
     ${state.events.length ? state.events.map(eventCard).join('') : '<p class="card">目前沒有活動</p>'}
     <button class="primary wide" onclick="createForm()">＋ 新增活動</button>
-    <button class="link" onclick="pastList()">📜 看以前辦過的聚會</button>
+    <button class="link" onclick="pastList()">以前辦過的聚會</button>
     <p class="muted">目前是<b>「${esc(state.family)}」</b> <button class="link" onclick="pickFamily()">不是？更換</button></p>`);
 }
 
@@ -128,7 +138,7 @@ function eventCard(ev, i) {
 
 function mineTag(ev) {
   const mine = ev.replies.find(r => r.family === state.family);
-  return `<p class="mine ${mine ? 'ok' : ''}"><b>您：${mine ? (mine.count ? `已報名 ${mine.count} 位 ✅` : '不去') : '尚未回覆'}</b></p>`;
+  return `<p class="mine ${mine ? (mine.count ? 'joined' : 'declined') : 'pending'}"><b>您：${mine ? (mine.count ? `已報名 ${mine.count} 位 ✅` : '不去') : '尚未回覆'}</b></p>`;
 }
 
 // 詳細頁：操作放上面，長輩不用往下滑；名單放下面
@@ -136,26 +146,24 @@ function detail(i) {
   const ev = state.events[i];
   const mine = ev.replies.find(r => r.family === state.family);
   const pick = (n, label, cls = '') => `<button class="${cls} ${mine && mine.count === n ? 'primary' : ''}" onclick="signup(${i}, ${n})">${label}</button>`;
-  const replies = ev.replies.map(r => `${esc(r.family)} ${r.count || '不去'}`).join('、');
-  show(`<button class="link" onclick="home()">〈 回活動列表</button>
+  show(`<button class="back" onclick="home()">〈 回活動列表</button>
     <h1>${esc(ev.title)}</h1>
     <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
     ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
     ${mineTag(ev)}
     <p class="big">「${esc(state.family)}」參加人數？</p>
     <div class="grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => pick(n, n)).join('')}</div>
-    ${pick(0, '本次不克參加', 'wide')}
+    ${pick(0, '本次不克參加', 'wide btn-decline')}
     <div class="card" style="margin-top:16px">
       <p class="big">目前共 ${ev.total} 人參加</p>
-      ${replies ? `<div>${replies}</div>` : '<div class="muted">還沒有人回覆</div>'}
-      ${ev.pending.length ? `<div class="muted">尚未回覆：${ev.pending.map(esc).join('、')}</div>` : ''}
+      ${roster(ev, '還沒有人回覆')}
     </div>
     ${ev.canEdit ? `<button class="wide" onclick="createForm(${i})">✏️ 編輯活動內容</button>` : ''}`);
 }
 
 // 歷史活動：唯讀（Gemini：白底＋「已結束」標籤、頁首提示、沒有任何報名按鈕）
 function pastList() {
-  show(`<button class="link" onclick="home()">〈 回活動列表</button>
+  show(`<button class="back" onclick="home()">〈 回活動列表</button>
     <h1>以前辦過的聚會</h1>
     ${state.past.length ? `<p class="muted">最近 ${state.past.length} 場</p>` + state.past.map((ev, i) => `<div class="card ev past" role="button" onclick="pastDetail(${i})">
       <div class="ev-head"><h2>${esc(ev.title)}</h2><span class="ev-arrow">›</span></div>
@@ -167,17 +175,24 @@ function pastList() {
 
 function pastDetail(i) {
   const ev = state.past[i];
-  const replies = ev.replies.map(r => `${esc(r.family)} ${r.count || '不去'}`).join('、');
-  show(`<button class="link" onclick="pastList()">〈 回以前的聚會</button>
+  show(`<button class="back" onclick="pastList()">〈 回以前的聚會</button>
     <h1>${esc(ev.title)}</h1>
     <p class="notice">本場聚會已圓滿結束</p>
     <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
     ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
     <div class="card" style="margin-top:16px">
       <p class="big">共 ${ev.total} 人參加</p>
-      ${replies ? `<div>${replies}</div>` : '<div class="muted">沒有報名紀錄</div>'}
+      ${roster(ev, '沒有報名紀錄')}
     </div>
     <button class="primary wide" onclick="pastList()">返回</button>`);
+}
+
+// 名單分三列（Gemini）：已報名／不克參加／尚未回覆，沒人的列省略；歷史活動沒有尚未回覆
+function roster(ev, empty) {
+  const rows = [['已報名', ev.replies.filter(r => r.count).map(r => `${esc(r.family)} ${r.count} 位`), ''],
+    ['不克參加', ev.replies.filter(r => !r.count).map(r => esc(r.family)), 'muted'], ['尚未回覆', ev.pending.map(esc), 'muted']];
+  return (ev.replies.length ? '' : `<div class="muted">${empty}</div>`) +
+    rows.filter(r => r[1].length).map(([t, list, c]) => `<div class="${c}">${t}：${list.join('、')}</div>`).join('');
 }
 
 function fmtDate(d) {
@@ -186,7 +201,7 @@ function fmtDate(d) {
 }
 
 function pickFamily() {
-  show(`${state.family ? '<button class="link" onclick="home()">〈 不換了，回活動列表</button>' : ''}
+  show(`${state.family ? '<button class="back" onclick="home()">〈 不換了，回活動列表</button>' : ''}
     <h1>請問怎麼稱呼您？</h1>
     <div class="grid">${state.families.map((f, i) => `<button onclick="join(state.families[${i}])">${esc(f)}</button>`).join('')}</div>
     <div class="card" style="margin-top:24px">
@@ -201,7 +216,7 @@ function pickFamily() {
 // 只列沒人選用的稱呼；確認時寫出會一起取消的報名（Gemini：次要連結、白話確認、空清單要能返回）
 function dropForm() {
   const list = state.unclaimed;
-  show(list.length ? `<h1>整理打錯的稱呼</h1><p>點選要刪除的稱呼：</p>
+  show(list.length ? `<h1>整理打錯的稱呼</h1><p class="muted">只會列出目前沒有人使用的稱呼。</p><p>點選要刪除的稱呼：</p>
       <div class="grid">${list.map((f, i) => `<button onclick="drop(state.unclaimed[${i}])">${esc(f)}</button>`).join('')}</div>
       <button class="wide" onclick="pickFamily()">返回</button>`
     : `<p class="big">目前沒有打錯或閒置的稱呼喔！</p><button class="primary wide" onclick="pickFamily()">返回</button>`);
@@ -277,10 +292,10 @@ function createForm(i) {
   const val = k => ev ? esc(ev[k]) : '';
   entries = [];
   show(`<h1>${ev ? '編輯活動' : '新增活動'}</h1>
-    ${ev ? '' : `<label for="raw">從 LINE 接龍快速帶入（選填）</label>
-    <textarea id="raw" rows="3" placeholder="在此貼上 LINE 群組接龍文字..."></textarea>
+    ${ev ? '' : `<details class="relay"><summary>從 LINE 接龍快速帶入（選填，點此展開）</summary>
+    <textarea id="raw" rows="3" placeholder="在此貼上 LINE 群組接龍文字..." aria-label="接龍文字"></textarea>
     <button type="button" id="pb" class="wide" onclick="parseRelay()">帶入接龍內容</button>
-    <div id="found"></div>`}
+    <div id="found"></div></details>`}
     <label for="t" style="margin-top:16px">活動名稱</label><input id="t" placeholder="例如：11月慶生餐會" maxlength="30" value="${val('title')}">
     <label for="d">日期</label><input id="d" type="date" min="${today}" value="${val('date')}">
     <label for="h">時間</label>${timeInput(val('time'))}
