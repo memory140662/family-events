@@ -233,10 +233,12 @@ const rename = () => {
 
 const link = e => `https://liff.line.me/${LIFF_ID}?g=${g}` + (e ? `&e=${e}` : '');
 
+const inChat = () => liff.isInClient() && liff.getContext().type !== 'none';
+
 // 以使用者本人帳號在聊天室發訊息；不是從聊天室打開就略過，失敗也不影響主流程。回傳沒發出去的原因（成功為空）
 async function notify(messages) {
   try {
-    if (!liff.isInClient() || liff.getContext().type === 'none') return '請從 LINE 群組裡的連結打開，才會通知群組';
+    if (!inChat()) return '請從 LINE 群組裡的連結打開，才會通知群組';
     await liff.sendMessages(messages);
   } catch (e) { console.warn('群組通知失敗', e); return e.message || String(e); }
 }
@@ -246,13 +248,27 @@ const signup = (i, n) => run(async () => {
   const same = ev.replies.some(r => r.family === state.family && r.count === n); // 人數沒變就不再發群組訊息
   await call('signup', { eventId: id, count: n });
   const total = state.events.find(e => e.id === id).total;
-  const err = same ? '' : await notify([signupFlex(ev, n ? `「${state.family}」報名 ${n} 位 ✅` : `「${state.family}」不克參加`, `目前共 ${total} 位`)]);
+  const card = signupFlex(ev, n ? `「${state.family}」報名 ${n} 位 ✅` : `「${state.family}」不克參加`, `目前共 ${total} 位`);
+  const err = same ? '' : await notify([card]);
+  const pick = !same && !inChat() && liff.isApiAvailable('shareTargetPicker'); // 外部瀏覽器：讓本人自選群組發送
+  shareCard = [card];
   show(`<p class="big ok">✅ 已送出</p><p class="big">「${esc(state.family)}」：${n ? `${n} 位` : '不去'}</p>
     <p>「${esc(title)}」目前共 ${total} 位</p>
-    ${err ? `<p class="warn">⚠️ 報名已存好，但沒有通知到群組：${esc(err)}</p>` : ''}
-    <button class="primary wide" onclick="home()">回活動列表</button>
+    ${pick ? `<p class="warn">還沒通知群組，請按下方按鈕選擇群組發送</p>
+    <button id="share" class="primary wide" onclick="share()">選擇群組發送通知</button>`
+      : err ? `<p class="warn">⚠️ 報名已存好，但沒有通知到群組：${esc(err)}</p>` : ''}
+    <button class="${pick ? '' : 'primary '}wide" onclick="home()">回活動列表</button>
     <button class="wide" onclick="liff.closeWindow()">關閉</button>`);
 });
+
+// 外部瀏覽器的選擇傳送對象視窗是彈出視窗，要使用者按下才開得了；送出回傳結果，取消回傳空值可再按
+let shareCard;
+async function share() {
+  const btn = document.getElementById('share');
+  try {
+    if (await liff.shareTargetPicker(shareCard)) { btn.disabled = true; btn.textContent = '✅ 已發送'; }
+  } catch (e) { alert('發送失敗：' + (e.message || e)); }
+}
 
 // 新增與編輯共用同一張表單；編輯時帶入原值、不顯示接龍匯入
 function createForm(i) {
