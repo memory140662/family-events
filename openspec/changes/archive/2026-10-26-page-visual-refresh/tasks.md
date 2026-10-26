@@ -7,4 +7,4 @@
 
 - [x] 2.1 `node test.js`；`git diff` 確認 signupFlex、eventFlex、changeFlex、Code.gs 未修改
 - [x] 2.2 8 個畫面修改前後截圖比對，交使用者確認
-- [ ] 2.3 Codex 審查 diff；LINE 實機確認
+- [x] 2.3 Codex 審查 diff；LINE 實機確認

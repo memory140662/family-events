@@ -9,4 +9,4 @@
 - [x] 2.1 `node test.js`；Flex 三函式與 eventCard 未修改
 - [x] 2.2 前後截圖交使用者確認
 - [x] 2.4 Codex 審查 diff：補上舊版後端沒回 over 的防護（Gemini 同意）
-- [ ] 2.3 Apps Script 重新部署後 LINE 實機確認
+- [x] 2.3 Apps Script 重新部署後 LINE 實機確認
