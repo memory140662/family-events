@@ -44,6 +44,7 @@ function onLineEvent(ev) {
     : '活動報名請點：\n' + link(g));
 }
 
+const MAX = 12; // 每戶每場人數上限（網頁按鈕 1–12）
 const PRIVACY = 'https://memory140662.github.io/family-events/privacy.html';
 const CHAT_EXAMPLE = '#新活動\n慶生餐會\n日時：01/01 11:30\n場所：家中\n小明*1\n小花*3';
 
@@ -63,8 +64,15 @@ function chatEvent(g, userId, body) {
     const known = rows('families').filter(r => r.groupId === g).map(r => r.name);
     const added = p.entries.map(e => e.family).filter(f => !known.includes(f));
     const id = write(Object.assign({ action: 'create', g: g, userId: userId }, p));
-    return eventCard(g, Object.assign({ id: id }, p), p.entries, added, '📢 新活動');
+    const card = eventCard(g, Object.assign({ id: id }, p), p.entries, added, '📢 新活動');
+    return p.over.length ? [card, overText(p.over)] : card; // 卡片不動，超過上限另回一則文字（Gemini 文案）
   });
+}
+
+function overText(over) {
+  return '⚠️ 超過 ' + MAX + ' 人上限未帶入：' + over.map(e => e.family + '（' + e.count + ' 人）').join('、') +
+    '\n\n每戶最多可報 ' + MAX + ' 位。請點上方卡片「我要報名」進入網頁：\n• 若為筆誤，請直接點選正確人數\n' +
+    '• 若超過 ' + MAX + ' 位，可先點「7 位以上」報 ' + MAX + ' 位並在群組說一聲，或新增第二個稱呼分開報名';
 }
 
 // 新活動卡片（與網頁發的同款，Gemini 設計）；Bot 用 reply 回，不計訊息額度
@@ -166,7 +174,7 @@ function write(b) {
     (b.entries || []).forEach(en => { // 從接龍帶入的報名，發起人已在畫面上確認過
       const family = String(en.family || '').trim().slice(0, 10);
       const count = Number(en.count);
-      if (!family || !(Number.isInteger(count) && count >= 0 && count <= 8)) return;
+      if (!family || !(Number.isInteger(count) && count >= 0 && count <= MAX)) return;
       addFamily(b.g, family);
       upsert('signups', ['eventId', 'family'], { eventId: id, family: family, count: count, userId: b.userId, updatedAt: now });
     });
@@ -185,7 +193,7 @@ function write(b) {
     const ev = rows('events').find(r => r.id === b.eventId && r.groupId === b.g);
     if (!ev) throw new Error('找不到這個活動');
     if (ended(ev, taipei)) throw new Error(ENDED);
-    if (!(Number.isInteger(count) && count >= 0 && count <= 8)) throw new Error('人數不正確');
+    if (!(Number.isInteger(count) && count >= 0 && count <= MAX)) throw new Error('人數不正確');
     upsert('signups', ['eventId', 'family'], { eventId: b.eventId, family: me.family, count: count, userId: b.userId, updatedAt: now });
   } else {
     throw new Error('未知的動作');
@@ -234,10 +242,12 @@ function parseChain(text, today) {
   lines.forEach(l => {
     const m = l.match(/^(.{1,10}?)\s*[*＊xX×]\s*(\d+(?:\s*[+＋]\s*\d+)*)$/); // 「華*3+1」＝大人 3＋小孩 1
     const n = m ? m[2].split(/[+＋]/).reduce((a, b) => a + Number(b), 0) : 0;
-    if (m && n <= 8) entries.set(m[1], n);
+    if (m) entries.set(m[1], n);
   });
+  const list = [...entries].map(([family, count]) => ({ family: family, count: count }));
   return { title: (lines[0] || '').replace(/邀約$/, '').slice(0, 30), date: date, time: hm ? pad(hm[1]) + ':' + hm[2] : '',
-           place: place.slice(0, 50), entries: [...entries].map(([family, count]) => ({ family: family, count: count })) };
+           place: place.slice(0, 50), entries: list.filter(e => e.count <= MAX),
+           over: list.filter(e => e.count > MAX) }; // 超過上限的不帶入，但要讓人知道（以最後一行為準）
 }
 
 // 結束＝開始後 3 小時（晚到、現場臨時改人數還來得及）；沒填時間＝當天結束。now 為台灣時間 yyyy-MM-ddTHH:mm

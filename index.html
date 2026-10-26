@@ -28,6 +28,12 @@
   /* 待選按鈕白底綠框（灰底長輩會以為不能按）；選中實心綠 */
   .grid button, .btn-decline { background: #fff; color: #087f3c; border: 2px solid #087f3c; }
   .grid button.primary { background: #087f3c; color: #fff; font-weight: bold; }
+  /* 人數 1–6，「7 位以上」就地展開 7–12（Gemini）：淡綠底虛線框，跟實線的「不克參加」分得開 */
+  .btn-more { background: #e8f5e9; color: #065f2d; border: 2px dashed #087f3c; font-weight: bold; }
+  .counts .extra, .counts .less, .counts.open .more { display: none; }
+  .counts.open .extra { display: grid; margin-top: 12px; }
+  .counts.open .less { display: block; }
+  .counts.locked .less { display: none; } /* 已選 7 以上：不給收起，免得藏住選中的數字 */
   .back { background: #fff; color: #087f3c; border: 2px solid #087f3c; border-radius: 999px; min-height: 48px; padding: 0 16px; font-weight: bold; margin-bottom: 12px; }
   details.relay { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px 16px; margin-bottom: 16px; }
   details.relay summary { color: #087f3c; font-weight: bold; padding: 8px 0; cursor: pointer; }
@@ -152,7 +158,7 @@ function detail(i) {
     ${ev.place ? `<div>📍 ${esc(ev.place)}</div>` : ''}
     ${mineTag(ev)}
     <p class="big">「${esc(state.family)}」參加人數？</p>
-    <div class="grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => pick(n, n)).join('')}</div>
+    ${counts(mine ? mine.count : 0, n => pick(n, n))}
     ${pick(0, '本次不克參加', 'wide btn-decline')}
     <div class="card" style="margin-top:16px">
       <p class="big">目前共 ${ev.total} 人參加</p>
@@ -185,6 +191,15 @@ function pastDetail(i) {
       ${roster(ev, '沒有報名紀錄')}
     </div>
     <button class="primary wide" onclick="pastList()">返回</button>`);
+}
+
+// 人數按鈕（Gemini）：預設 1–6，「7 位以上」就地展開 7–12；展開／收起只切換畫面，不送出。新活動一律收合
+function counts(sel, btn) {
+  const grid = (ns, cls = '') => `<div class="grid ${cls}">${ns.map(btn).join('')}</div>`;
+  return `<div class="counts${sel > 6 ? ' open locked' : ''}">${grid([1, 2, 3, 4, 5, 6])}
+    <button type="button" class="wide btn-more more" onclick="this.parentNode.classList.add('open')">7 位以上 ▾</button>
+    ${grid([7, 8, 9, 10, 11, 12], 'extra')}
+    <button type="button" class="wide btn-more less" onclick="this.parentNode.classList.remove('open')">收起 ▴</button></div>`;
 }
 
 // 名單分三列（Gemini）：已報名／不克參加／尚未回覆，沒人的列省略；歷史活動沒有尚未回覆
@@ -302,7 +317,7 @@ function createForm(i) {
     <label for="p">地點</label><input id="p" placeholder="例如：龍潭蔣府宴" maxlength="50" value="${val('place')}">
     <div id="list"></div>
     ${ev ? '' : `<p class="big">「${esc(state.family)}」參加人數？</p>
-    <div id="mine"><div class="grid">${[1, 2, 3, 4, 5, 6, 7, 8].map(n => `<button data-n="${n}" onclick="pickMine(${n})">${n}</button>`).join('')}</div>
+    <div id="mine">${counts(0, n => `<button data-n="${n}" onclick="pickMine(${n})">${n}</button>`)}
     <button class="wide btn-decline" data-n="0" onclick="pickMine(0)">本次不克參加</button></div>
     <hr style="margin:24px 0;border:none;border-top:2px dashed #ccc">`}
     <button class="primary wide" onclick="${ev ? `save(${i})` : 'create()'}">${ev ? '儲存修改' : '建立活動'}</button>
@@ -333,7 +348,9 @@ async function parseRelay() {
     [['t', r.title], ['d', r.date], ['p', r.place]].forEach(([id, v]) => { if (v) document.getElementById(id).value = v; });
     if (r.time) document.querySelector('.time-row').outerHTML = timeInput(r.time);
     entries = r.entries; // 接龍裡若有自己的稱呼，就成為預選的人數
-    found.innerHTML = !r.date && !entries.length ? '<p class="warn">無法辨識接龍內容，請直接在下方手動填寫。</p>' : '';
+    const over = (r.over || []).map(e => `${esc(e.family)}（${e.count} 人）`).join('、'); // 超過 12 人的不帶入，但要講出來（Gemini 文案）
+    found.innerHTML = over ? `<p class="warn">⚠️ 超過 12 人上限未帶入：${over}<br>每戶最多 12 人，建立活動後可改報 12 位，或新增第二個稱呼分開報名。</p>`
+      : !r.date && !entries.length ? '<p class="warn">無法辨識接龍內容，請直接在下方手動填寫。</p>' : '';
     showEntries();
   } catch (e) {
     found.innerHTML = '<p class="warn">解析失敗，請改用手動填寫。</p>';
@@ -391,6 +408,9 @@ function pickMine(n) {
 function showEntries() {
   const mine = entries.find(e => e.family === state.family);
   document.querySelectorAll('#mine button').forEach(b => b.classList.toggle('primary', !!mine && Number(b.dataset.n) === mine.count));
+  const box = document.querySelector('#mine .counts'), big = !!mine && mine.count > 6; // 選到 7 以上就展開、不給收起
+  box.classList.toggle('locked', big);
+  if (big) box.classList.add('open');
   const added = entries.filter(e => !state.families.includes(e.family)).map(e => esc(e.family));
   document.getElementById('list').innerHTML = entries.length ? `<p><b>已帶入名單（共 ${entries.reduce((n, e) => n + e.count, 0)} 人）：</b><br>
     ${entries.map(e => `• ${esc(e.family)}：${e.count ? e.count + ' 人' : '不去'}`).join('　')}</p>

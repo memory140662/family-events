@@ -138,7 +138,11 @@ assert.match(call('u5', 'rename', { family: '江' }).error, /已經有了/);
 assert.ok(call('u99', 'rename', { family: 'X' }).error, '還沒選稱呼的人不能改');
 
 // 人數超出範圍、別的群組的活動、別的群組的連結都要擋下
-assert.ok(call('u1', 'signup', { eventId: party, count: 9 }).error);
+// 上限 12：大家族三代同堂一桌報得下；13 要擋（網頁按鈕只到 12，前後端要一致）
+const prev = call('u1', 'load').events.find(e => e.id === party).replies.find(r => r.family === '江').count;
+assert.ok(!call('u1', 'signup', { eventId: party, count: 12 }).error, '12 位要能報');
+assert.ok(call('u1', 'signup', { eventId: party, count: 13 }).error);
+call('u1', 'signup', { eventId: party, count: prev });
 hook([{ type: 'join', source: inGroup('G2'), replyToken: 'r' }]);
 call('u9', 'join', { family: '陳' }, 'G2');
 assert.ok(call('u9', 'signup', { eventId: party, count: 2 }, 'G2').error, '不能報名別的群組的活動');
@@ -156,14 +160,18 @@ assert.deepEqual([ev.date, ev.time], ['2026-11-20', '18:00']);
 // 接龍匯入：用家人真正的寫法（spec 範例）解析出活動與已接龍的家庭
 const chain = '11月慶生餐會邀約\n日時：\n11/14（六）11:30\n場所：龍潭-蔣府宴\n出席請接龍：\n花*1\n江*3 \n';
 assert.deepEqual(call('u1', 'parse', { text: chain }), { title: '11月慶生餐會', date: '2026-11-14', time: '11:30',
-  place: '龍潭-蔣府宴', entries: [{ family: '花', count: 1 }, { family: '江', count: 3 }] });
+  place: '龍潭-蔣府宴', entries: [{ family: '花', count: 1 }, { family: '江', count: 3 }], over: [] });
 // 家人會寫「3+1」（大人＋小孩），要加總，不能整行漏掉
 assert.deepEqual(call('u1', 'parse', { text: chain + '華*3+1\n' }).entries.at(-1), { family: '華', count: 4 });
 // 接龍沒寫年份：已過的月日要算明年，不然活動一建立就「過期」看不到
 assert.equal(call('u1', 'parse', { text: '春酒\n1/5 18:00\n林*2' }).date, '2027-01-05');
 // 不是接龍的文字：什麼都不帶入，也不寫入任何資料
 const n = sheets.events.getDataRange().getValues().length;
-assert.deepEqual(call('u1', 'parse', { text: '晚餐吃什麼' }), { title: '晚餐吃什麼', date: '', time: '', place: '', entries: [] });
+assert.deepEqual(call('u1', 'parse', { text: '晚餐吃什麼' }), { title: '晚餐吃什麼', date: '', time: '', place: '', entries: [], over: [] });
+// 接龍超過 12 人：不帶入，但要回報給使用者（以前會整行默默消失，主揪以為全匯入了）；同一家以最後一行為準
+const r = call('u1', 'parse', { text: chain + '陳*15\n周*20\n周*6\n林*12' });
+assert.deepEqual(r.over, [{ family: '陳', count: 15 }], '被後面改正的那行不該再警告');
+assert.ok(r.entries.some(e => e.family === '周' && e.count === 6) && r.entries.some(e => e.family === '林' && e.count === 12));
 assert.equal(sheets.events.getDataRange().getValues().length, n, 'parse 只解析不寫入');
 
 // 確認後建立：接龍的報名一併寫入，沒見過的家庭一併建立
@@ -197,6 +205,15 @@ assert.match(lastReply(), /找不到活動日期/);
 say('#新活動\n春酒\n1/5', inGroup('G1'));
 assert.match(lastReply(), /無法辨識/);
 assert.equal(eventsIn('G1').length, count);
+// 接龍有人超過 12：卡片照舊（不改 LINE 卡片），另回一則文字說明哪一家沒帶入、怎麼補
+say('#新活動\n跨年聚餐\n12/31 18:00\n花*2\n陳*15', inGroup('G1', 'u1'));
+let msgs = JSON.parse(fetched.at(-1).opt.payload).messages;
+assert.deepEqual(msgs.map(m => m.type), ['flex', 'text']);
+assert.match(msgs[1].text, /陳（15 人）/);
+assert.doesNotMatch(JSON.stringify(msgs[0]), /陳/, '超過上限的不寫進活動');
+// 沒超過就只有卡片一則
+say('#新活動\n元旦登山\n1/1 08:00\n花*2', inGroup('G1', 'u1'));
+assert.equal(JSON.parse(fetched.at(-1).opt.payload).messages.length, 1);
 // 還沒登記的群組也能直接用
 say('#新活動\n春酒\n1/5 18:00', inGroup('G7', 'u1'));
 assert.equal(call('u1', 'load', {}, 'G7').events[0].date, '2027-01-05');
