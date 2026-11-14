@@ -203,10 +203,10 @@ function counts(sel, btn) {
     <button type="button" class="wide btn-more less" onclick="this.parentNode.classList.remove('open')">收起 ▴</button></div>`;
 }
 
-// 名單分三列（Gemini）：已報名／不克參加／尚未回覆，沒人的列省略；歷史活動沒有尚未回覆
+// 名單分兩列：已報名／不克參加，沒人的列省略（不列尚未回覆）
 function roster(ev, empty) {
   const rows = [['已報名', ev.replies.filter(r => r.count).map(r => `${esc(r.family)} ${r.count} 位`), ''],
-    ['不克參加', ev.replies.filter(r => !r.count).map(r => esc(r.family)), 'muted'], ['尚未回覆', ev.pending.map(esc), 'muted']];
+    ['不克參加', ev.replies.filter(r => !r.count).map(r => esc(r.family)), 'muted']];
   return (ev.replies.length ? '' : `<div class="muted">${empty}</div>`) +
     rows.filter(r => r[1].length).map(([t, list, c]) => `<div class="${c}">${t}：${list.join('、')}</div>`).join('');
 }
