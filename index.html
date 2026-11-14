@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>家族活動報名</title>
+<meta name="description" content="點開即可報名家族聚餐、查看誰會參加">
+<meta property="og:title" content="家族活動報名">
+<meta property="og:description" content="點開即可報名家族聚餐、查看誰會參加">
+<meta property="og:image" content="https://memory140662.github.io/family-events/icon.png">
 <style>
   * { box-sizing: border-box; }
   body { font: 20px/1.6 system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 0; padding: 16px; background: #fff8f0; color: #222; }
@@ -26,7 +30,7 @@
   .mine.declined { background: #f3f4f6; color: #4b5563; }
   .mine.pending { background: #fef3c7; color: #92400e; }
   /* 待選按鈕白底綠框（灰底長輩會以為不能按）；選中實心綠 */
-  .grid button, .btn-decline { background: #fff; color: #087f3c; border: 2px solid #087f3c; }
+  .grid button, .btn-decline, #share:not(.primary) { background: #fff; color: #087f3c; border: 2px solid #087f3c; }
   .grid button.primary { background: #087f3c; color: #fff; font-weight: bold; }
   /* 人數 1–6，「7 位以上」就地展開 7–12（Gemini）：淡綠底虛線框，跟實線的「不克參加」分得開 */
   .btn-more { background: #e8f5e9; color: #065f2d; border: 2px dashed #087f3c; font-weight: bold; }
@@ -153,6 +157,7 @@ function detail(i) {
   const ev = state.events[i];
   const mine = ev.replies.find(r => r.family === state.family);
   const pick = (n, label, cls = '') => `<button class="${cls} ${mine && mine.count === n ? 'primary' : ''}" onclick="signup(${i}, ${n})">${label}</button>`;
+  shareCard = [eventFlex({ ...ev, entries: ev.replies }, ev.id, '📢 邀請報名')]; // 分享給其他人：LINE 內外都用選擇傳送對象
   show(`<button class="back" onclick="home()">〈 回活動列表</button>
     <h1>${esc(ev.title)}</h1>
     <div>📅 ${fmtDate(ev.date)} ${esc(ev.time)}</div>
@@ -165,6 +170,8 @@ function detail(i) {
       <p class="big">目前共 ${ev.total} 人參加</p>
       ${roster(ev, '還沒有人回覆')}
     </div>
+    ${liff.isApiAvailable('shareTargetPicker') ? '<button id="share" class="wide" onclick="share()">📤 分享此活動</button>'
+      : '<p class="muted">此環境無法分享，請在 LINE 中開啟</p>'}
     ${ev.canEdit ? `<button class="wide" onclick="createForm(${i})">✏️ 編輯活動內容</button>` : ''}`);
 }
 
@@ -376,13 +383,13 @@ function signupFlex(ev, line, total) {
 }
 
 // 新活動卡片（Gemini 設計）：發起人之後可長按「設為公告」
-function eventFlex(d, id) {
+function eventFlex(d, id, head = '📢 新活動') {
   const total = d.entries.reduce((n, e) => n + e.count, 0);
   const summary = d.entries.length
     ? `已報名：${d.entries.map(e => `${e.family} ${e.count || '不去'}`).join('、')}（共 ${total} 位）` : '尚無人報名';
   const text = (t, size, color, bold) => ({ type: 'text', text: t, size, color, wrap: true, ...(bold && { weight: 'bold' }) });
   return { type: 'flex', altText: `📢 新活動：${d.title}`, contents: { type: 'bubble', size: 'mega',
-    header: { type: 'box', layout: 'vertical', paddingBottom: 'none', contents: [text('📢 新活動', 'lg', '#087f3c', true)] },
+    header: { type: 'box', layout: 'vertical', paddingBottom: 'none', contents: [text(head, 'lg', '#087f3c', true)] },
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [
       text(d.title, 'xxl', '#111111', true), { type: 'separator' },
       { type: 'box', layout: 'vertical', spacing: 'sm', contents: [
