@@ -163,6 +163,17 @@ assert.deepEqual(call('u1', 'parse', { text: chain }), { title: '11月慶生餐�
   place: '龍潭-蔣府宴', entries: [{ family: '花', count: 1 }, { family: '江', count: 3 }], over: [] });
 // 家人會寫「3+1」（大人＋小孩），要加總，不能整行漏掉
 assert.deepEqual(call('u1', 'parse', { text: chain + '華*3+1\n' }).entries.at(-1), { family: '華', count: 4 });
+// 家人常省略「日時：」「場所：」：日期下一行就是地點；但下一行是接龍、標籤或時間時不能誤當地點（卡片會顯示錯的地點）
+// 也常寫「小明 1」不加 *，整行漏掉的話主揪以為人到齊了
+let p = call('u1', 'parse', { text: '慶生餐會\n01/01 11:30\n家中\n小明 1\n小花 3+1' });
+assert.deepEqual([p.place, p.entries], ['家中', [{ family: '小明', count: 1 }, { family: '小花', count: 4 }]]);
+assert.equal(call('u1', 'parse', { text: '慶生餐會\n01/01 11:30\n小明 1' }).place, '', '接龍行不是地點');
+p = call('u1', 'parse', { text: '慶生餐會\n01/01\n11:30\n出席請接龍：\n小明 1' });
+assert.deepEqual([p.place, p.entries], ['', [{ family: '小明', count: 1 }]], '時間行、標籤行都不是地點');
+assert.equal(call('u1', 'parse', { text: '慶生餐會\n01/01 11:30\n出席請接龍：\n小明*1' }).place, '');
+// 「名字 數字」會撞到標題與地點：標題、含冒號的行不能變成一戶「慶生餐會」「場所：台北」
+p = call('u1', 'parse', { text: '慶生餐會 2\n01/01\n場所：台北 101\n小明*1' });
+assert.deepEqual([p.title, p.place, p.entries], ['慶生餐會 2', '台北 101', [{ family: '小明', count: 1 }]]);
 // 接龍沒寫年份：已過的月日要算明年，不然活動一建立就「過期」看不到
 assert.equal(call('u1', 'parse', { text: '春酒\n1/5 18:00\n林*2' }).date, '2027-01-05');
 // 不是接龍的文字：什麼都不帶入，也不寫入任何資料

@@ -237,10 +237,14 @@ function parseChain(text, today) {
   }
   const hm = all.match(/(\d{1,2})[:：](\d{2})/);
   const pi = lines.findIndex(l => /^(場所|地點|地址)\s*[:：]/.test(l));
-  const place = pi < 0 ? '' : lines[pi].replace(/^(場所|地點|地址)\s*[:：]\s*/, '') || lines[pi + 1] || '';
+  const ENTRY = /^(.{1,10}?)(?:\s*[*＊xX×]\s*|\s+)(\d+(?:\s*[+＋]\s*\d+)*)$/; // 「華*3+1」「華 3+1」＝大人 3＋小孩 1
+  // 沒寫「場所：」時，日期那行的下一行當地點（排除接龍行、「出席請接龍：」這類標籤、只寫時間的行）
+  const next = lines[lines.findIndex(l => /\d{1,2}\s*[\/月]\s*\d{1,2}/.test(l)) + 1] || '';
+  const place = pi >= 0 ? lines[pi].replace(/^(場所|地點|地址)\s*[:：]\s*/, '') || lines[pi + 1] || '' :
+    md && next && !ENTRY.test(next) && !/[:：]$|\d{1,2}[:：]\d{2}/.test(next) ? next : '';
   const entries = new Map(); // 同一家出現多次以最後一行為準
-  lines.forEach(l => {
-    const m = l.match(/^(.{1,10}?)\s*[*＊xX×]\s*(\d+(?:\s*[+＋]\s*\d+)*)$/); // 「華*3+1」＝大人 3＋小孩 1
+  lines.forEach((l, i) => {
+    const m = i > 0 && !/[:：]/.test(l) && l.match(ENTRY); // 標題「慶生餐會 2」、「場所：台北 101」不是接龍
     const n = m ? m[2].split(/[+＋]/).reduce((a, b) => a + Number(b), 0) : 0;
     if (m) entries.set(m[1], n);
   });
